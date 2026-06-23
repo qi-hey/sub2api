@@ -275,6 +275,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	body = applyPrivacyFilterToRequestBody(reqLog, service.ContentModerationProtocolOpenAIResponses, reqModel, body)
+	sessionHashBody = body
+
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
@@ -857,6 +860,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+
+	body = applyPrivacyFilterToRequestBody(reqLog, service.ContentModerationProtocolAnthropicMessages, reqModel, body)
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
