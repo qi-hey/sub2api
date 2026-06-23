@@ -199,6 +199,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
+	body = applyPrivacyFilterToRequestBody(reqLog, service.ContentModerationProtocolAnthropicMessages, reqModel, body)
+	bodyRef = service.NewRequestBodyRef(body)
+	parsedReq, err = service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
+	if err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+	reqModel = parsedReq.Model
+	reqStream = parsedReq.Stream
+
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
