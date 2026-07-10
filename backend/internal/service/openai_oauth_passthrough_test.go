@@ -2257,6 +2257,8 @@ func TestOpenAIGatewayService_OpenAIPassthrough_ClearsOutboundShapeBetweenAccoun
 	require.Len(t, events, 2)
 	require.Equal(t, int64(13), events[1].AccountID)
 	require.NotContains(t, events[1].Detail, `"outbound_shape"`)
+	topLevelDetail, _ := c.Get(OpsUpstreamErrorDetailKey)
+	require.Empty(t, topLevelDetail)
 }
 
 func TestOpenAIGatewayService_OpenAIPassthrough_APIKeyCodexHeadersAreCompleted(t *testing.T) {
