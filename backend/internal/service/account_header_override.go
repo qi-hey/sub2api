@@ -17,6 +17,9 @@ const (
 	credKeyHeaderOverrideEnabled = "header_override_enabled"
 	credKeyHeaderOverrides       = "header_overrides"
 
+	legacyExtraCustomHeadersEnabled = "custom_headers_enabled"
+	legacyExtraCustomHeaders        = "custom_headers"
+
 	maxHeaderOverrideEntries     = 64
 	maxHeaderOverrideNameLength  = 200
 	maxHeaderOverrideValueLength = 8192
@@ -101,6 +104,25 @@ func (a *Account) IsHeaderOverrideEnabled() bool {
 // 结果带热路径缓存（同 GetModelMapping 先例）：同一 credentials 映射在
 // 一次请求 / 一条 WS 会话内的多次调用只做一次解析与校验。
 func (a *Account) GetHeaderOverrides() map[string]string {
+	legacy := a.GetLegacyCustomHeaderOverrides()
+	current := a.getCredentialHeaderOverrides()
+	if len(legacy) == 0 {
+		return current
+	}
+	if len(current) == 0 {
+		return legacy
+	}
+	merged := make(map[string]string, len(legacy)+len(current))
+	for name, value := range legacy {
+		merged[name] = value
+	}
+	for name, value := range current {
+		merged[name] = value
+	}
+	return merged
+}
+
+func (a *Account) getCredentialHeaderOverrides() map[string]string {
 	if !a.IsHeaderOverrideEnabled() {
 		return nil
 	}
@@ -139,6 +161,21 @@ func (a *Account) GetHeaderOverrides() map[string]string {
 	a.headerOverrideCacheRawLen = rawLen
 	a.headerOverrideCacheRawSig = rawSig
 	return overrides
+}
+
+// GetLegacyCustomHeaderOverrides reads the v142 custom header fields stored in
+// account.extra. New installs should use credentials.header_overrides, but this
+// keeps existing upgraded accounts from silently losing their configured
+// Any Router/Codex request headers.
+func (a *Account) GetLegacyCustomHeaderOverrides() map[string]string {
+	if a == nil || a.Extra == nil {
+		return nil
+	}
+	enabled, ok := a.Extra[legacyExtraCustomHeadersEnabled].(bool)
+	if !ok || !enabled {
+		return nil
+	}
+	return resolveHeaderOverrides(stringMappingFromRaw(a.Extra[legacyExtraCustomHeaders]))
 }
 
 // resolveHeaderOverrides 解析并防御性过滤原始覆写表：保存路径已做校验，
