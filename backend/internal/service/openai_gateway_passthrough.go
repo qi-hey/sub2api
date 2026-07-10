@@ -53,7 +53,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			}
 		}
 	}
-	if isOpenAIResponsesCompactPath(c) {
+	compactRequest := isOpenAIResponsesCompactPath(c)
+	if compactRequest {
 		compactMappedModel := resolveOpenAICompactForwardModel(account, passthroughForwardModel)
 		if compactMappedModel != "" && compactMappedModel != passthroughForwardModel {
 			nextBody, setErr := sjson.SetBytes(body, "model", compactMappedModel)
@@ -81,7 +82,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			return nil, fmt.Errorf("openai passthrough rejected before upstream: %s", rejectReason)
 		}
 
-		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body, isOpenAIResponsesCompactPath(c))
+		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body, compactRequest)
 		if err != nil {
 			return nil, err
 		}
@@ -118,7 +119,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, policyErr
 	}
 	body = updatedBody
-	if account != nil && account.Type == AccountTypeAPIKey {
+	if account != nil && account.Type == AccountTypeAPIKey && !compactRequest {
 		updatedBody, updated, updateErr := ensureOpenAIAPIKeyPassthroughCodexBody(body)
 		if updateErr != nil {
 			return nil, updateErr
@@ -137,7 +138,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 	}
 	clientRequestedStream := reqStream
-	if shouldForceOpenAIPassthroughUpstreamStream(account, passthroughForwardModel, reqStream) {
+	if !compactRequest && shouldForceOpenAIPassthroughUpstreamStream(account, passthroughForwardModel, reqStream) {
 		nextBody, setErr := sjson.SetBytes(body, "stream", true)
 		if setErr != nil {
 			return nil, fmt.Errorf("force passthrough upstream stream: %w", setErr)
@@ -1294,7 +1295,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	// Some upstreams (e.g. other sub2api instances) may return SSE even when
 	// stream=false was requested. Without this conversion the client would
 	// receive raw SSE text or a terminal event with empty output.
-	if isEventStreamResponse(resp.Header) {
+	if isEventStreamResponse(resp.Header) || bodyHasSSEFraming(body) {
 		return s.handlePassthroughSSEToJSON(resp, c, body, originalModel, mappedModel)
 	}
 
@@ -1343,60 +1344,61 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel string, mappedModel string) (*openaiNonStreamingResultPassthrough, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
-
-	usage := &OpenAIUsage{}
-	if ok {
-		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
-			*usage = parsedUsage
-		}
-		// When the terminal event has an empty output array, reconstruct
-		// output from accumulated delta events so the client gets full content.
-		if len(gjson.GetBytes(finalResponse, "output").Array()) == 0 {
-			if outputJSON, reconstructed := reconstructResponseOutputFromSSE(bodyText); reconstructed {
-				if patched, err := sjson.SetRawBytes(finalResponse, "output", outputJSON); err == nil {
-					finalResponse = patched
-				}
-			}
-		}
-		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
-		body = finalResponse
-		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
-			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
-		}
-		// Correct tool calls in final response
-		body = s.correctToolCallsInResponseBody(body)
-		restoredBody, restoreErr := restoreOpenAIResponsesNamespacePayload(c, body)
-		if restoreErr != nil {
-			return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", restoreErr)
-		}
-		body = restoredBody
-	} else {
+	if !ok {
 		terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
-		if terminalOK && terminalType == "response.failed" {
+		switch terminalType {
+		case "response.failed":
 			msg := extractOpenAISSEErrorMessage(terminalPayload)
 			if msg == "" {
-				msg = "Upstream compact response failed"
+				msg = "Upstream response failed"
+			}
+			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+		case "response.incomplete", "response.cancelled", "response.canceled":
+			response := gjson.GetBytes(terminalPayload, "response")
+			if response.Exists() && response.Type == gjson.JSON && response.Raw != "" {
+				finalResponse = []byte(response.Raw)
+				ok = true
+			}
+		}
+		if !ok {
+			msg := "Upstream stream ended before a terminal response"
+			if terminalOK {
+				msg = "Upstream terminal event did not include a response"
 			}
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 		}
-		usage = s.parseSSEUsageFromBody(bodyText)
-		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
-			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
-		}
-		body = []byte(bodyText)
 	}
+
+	usage := &OpenAIUsage{}
+	if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
+		*usage = parsedUsage
+	}
+	// When the terminal event has an empty output array, reconstruct
+	// output from accumulated delta events so the client gets full content.
+	if len(gjson.GetBytes(finalResponse, "output").Array()) == 0 {
+		if outputJSON, reconstructed := reconstructResponseOutputFromSSE(bodyText); reconstructed {
+			if patched, err := sjson.SetRawBytes(finalResponse, "output", outputJSON); err == nil {
+				finalResponse = patched
+			}
+		}
+	}
+	finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
+	body = finalResponse
+	if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
+		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	}
+	// Correct tool calls in final response.
+	body = s.correctToolCallsInResponseBody(body)
+	restoredBody, restoreErr := restoreOpenAIResponsesNamespacePayload(c, body)
+	if restoreErr != nil {
+		return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", restoreErr)
+	}
+	body = restoredBody
 
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := "application/json; charset=utf-8"
-	if !ok {
-		contentType = resp.Header.Get("Content-Type")
-		if contentType == "" {
-			contentType = "text/event-stream"
-		}
-	} else {
-		c.Writer.Header().Set("Content-Type", contentType)
-	}
+	c.Writer.Header().Set("Content-Type", contentType)
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
