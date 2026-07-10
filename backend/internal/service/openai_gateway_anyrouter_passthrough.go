@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -25,8 +26,12 @@ func shouldUseAnyRouterOpenAIPassthroughCodexShape(account *Account, model strin
 	if account == nil || account.Type != AccountTypeAPIKey || !account.IsPoolMode() {
 		return false
 	}
-	baseURL := strings.ToLower(strings.TrimSpace(account.GetOpenAIBaseURL()))
-	if !strings.Contains(baseURL, "anyrouter.top") {
+	baseURL, err := url.Parse(strings.TrimSpace(account.GetOpenAIBaseURL()))
+	if err != nil {
+		return false
+	}
+	hostname := strings.ToLower(strings.TrimSuffix(baseURL.Hostname(), "."))
+	if hostname != "anyrouter.top" && !strings.HasSuffix(hostname, ".anyrouter.top") {
 		return false
 	}
 	return strings.EqualFold(strings.TrimSpace(model), "gpt-5.5")
