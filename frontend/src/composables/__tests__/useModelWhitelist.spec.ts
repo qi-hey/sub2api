@@ -4,9 +4,89 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import {
+  buildCreateAccountModelRestrictionConfig,
+  buildModelMappingConfiguration,
+  buildModelMappingObject,
+  getCreateAccountModelRestrictionDefaults,
+  getModelsByPlatform,
+  splitModelMappingObject
+} from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
+  it('uses the compact OpenAI defaults for newly created accounts', () => {
+    const defaults = getCreateAccountModelRestrictionDefaults('openai')
+
+    expect(defaults).toEqual({
+      allowedModels: ['gpt-5.5', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra'],
+      modelMappings: [
+        { from: 'gpt-5.4', to: 'gpt-5.5' },
+        { from: 'gpt-5.4-mini', to: 'gpt-5.5' },
+        { from: 'gpt-5.4', to: 'gpt-5.6-sol' },
+        { from: 'gpt-5.4-mini', to: 'gpt-5.6-sol' }
+      ]
+    })
+
+    expect(
+      buildCreateAccountModelRestrictionConfig(
+        'openai',
+        'whitelist',
+        defaults.allowedModels,
+        defaults.modelMappings
+      )
+    ).toEqual({
+      modelMapping: {
+        'gpt-5.5': 'gpt-5.5',
+        'gpt-5.6-luna': 'gpt-5.6-luna',
+        'gpt-5.6-sol': 'gpt-5.6-sol',
+        'gpt-5.6-terra': 'gpt-5.6-terra',
+        'gpt-5.4': 'gpt-5.5',
+        'gpt-5.4-mini': 'gpt-5.5'
+      },
+      modelMappingFallbacks: {
+        'gpt-5.4': ['gpt-5.6-sol'],
+        'gpt-5.4-mini': ['gpt-5.6-sol']
+      }
+    })
+  })
+
+  it('keeps non-OpenAI create modes exclusive', () => {
+    expect(
+      buildCreateAccountModelRestrictionConfig(
+        'anthropic',
+        'whitelist',
+        ['claude-opus-4-8'],
+        [{ from: 'claude-latest', to: 'claude-opus-4-8' }]
+      )
+    ).toEqual({
+      modelMapping: {
+        'claude-opus-4-8': 'claude-opus-4-8'
+      },
+      modelMappingFallbacks: null
+    })
+  })
+
+  it('round-trips duplicate mapping rows through fallback storage', () => {
+    const config = buildModelMappingConfiguration(
+      'combined',
+      ['gpt-5.5', 'gpt-5.6-sol'],
+      [
+        { from: 'gpt-5.4', to: 'gpt-5.5' },
+        { from: 'gpt-5.4', to: 'gpt-5.6-sol' }
+      ]
+    )
+
+    expect(
+      splitModelMappingObject(config.modelMapping, config.modelMappingFallbacks)
+    ).toEqual({
+      allowedModels: ['gpt-5.5', 'gpt-5.6-sol'],
+      modelMappings: [
+        { from: 'gpt-5.4', to: 'gpt-5.5' },
+        { from: 'gpt-5.4', to: 'gpt-5.6-sol' }
+      ]
+    })
+  })
+
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
     const models = getModelsByPlatform('openai')
 
