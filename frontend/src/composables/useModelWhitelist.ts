@@ -463,8 +463,57 @@ export interface ModelMappingEntry {
   to: string
 }
 
+const defaultOpenAIAllowedModels = [
+  'gpt-5.5',
+  'gpt-5.6-luna',
+  'gpt-5.6-sol',
+  'gpt-5.6-terra'
+]
+
+const defaultOpenAIModelMappings: ModelMappingEntry[] = [
+  { from: 'gpt-5.4', to: 'gpt-5.5' },
+  { from: 'gpt-5.4-mini', to: 'gpt-5.5' },
+  { from: 'gpt-5.4', to: 'gpt-5.6-sol' },
+  { from: 'gpt-5.4-mini', to: 'gpt-5.6-sol' }
+]
+
+export function getCreateAccountModelRestrictionDefaults(platform: string): {
+  allowedModels: string[]
+  modelMappings: ModelMappingEntry[]
+} {
+  if (platform === 'openai') {
+    return {
+      allowedModels: [...defaultOpenAIAllowedModels],
+      modelMappings: defaultOpenAIModelMappings.map(mapping => ({ ...mapping }))
+    }
+  }
+  return {
+    allowedModels: [...getModelsByPlatform(platform)],
+    modelMappings: []
+  }
+}
+
+export interface ModelMappingConfiguration {
+  modelMapping: Record<string, string> | null
+  modelMappingFallbacks: Record<string, string[]> | null
+}
+
+export function buildCreateAccountModelRestrictionConfig(
+  platform: string,
+  mode: ModelRestrictionMode,
+  allowedModels: string[],
+  modelMappings: ModelMappingEntry[]
+): ModelMappingConfiguration {
+  return buildModelMappingConfiguration(
+    platform === 'openai' ? 'combined' : mode,
+    allowedModels,
+    modelMappings
+  )
+}
+
 export function splitModelMappingObject(
-  modelMapping?: Record<string, unknown> | null
+  modelMapping?: Record<string, unknown> | null,
+  modelMappingFallbacks?: Record<string, unknown> | null
 ): { allowedModels: string[]; modelMappings: ModelMappingEntry[] } {
   const allowedModels: string[] = []
   const modelMappings: ModelMappingEntry[] = []
@@ -486,7 +535,52 @@ export function splitModelMappingObject(
     }
   }
 
+  if (modelMappingFallbacks && typeof modelMappingFallbacks === 'object') {
+    for (const [rawFrom, rawTargets] of Object.entries(modelMappingFallbacks)) {
+      const from = rawFrom.trim()
+      if (!from || !Array.isArray(rawTargets)) continue
+      for (const rawTarget of rawTargets) {
+        if (typeof rawTarget !== 'string') continue
+        const to = rawTarget.trim()
+        if (!to) continue
+        modelMappings.push({ from, to })
+      }
+    }
+  }
+
   return { allowedModels, modelMappings }
+}
+
+export function buildModelMappingConfiguration(
+  mode: ModelRestrictionMode,
+  allowedModels: string[],
+  modelMappings: ModelMappingEntry[]
+): ModelMappingConfiguration {
+  const modelMapping = buildModelMappingObject(mode, allowedModels, []) || {}
+  const fallbacks: Record<string, string[]> = {}
+  const configuredSources = new Set<string>()
+
+  if (mode === 'mapping' || mode === 'combined') {
+    for (const entry of modelMappings) {
+      const from = entry.from.trim()
+      const to = entry.to.trim()
+      if (!from || !to || !isValidWildcardPattern(from) || to.includes('*')) continue
+
+      if (!configuredSources.has(from)) {
+        modelMapping[from] = to
+        configuredSources.add(from)
+        continue
+      }
+
+      if (modelMapping[from] === to || fallbacks[from]?.includes(to)) continue
+      ;(fallbacks[from] ||= []).push(to)
+    }
+  }
+
+  return {
+    modelMapping: Object.keys(modelMapping).length > 0 ? modelMapping : null,
+    modelMappingFallbacks: Object.keys(fallbacks).length > 0 ? fallbacks : null
+  }
 }
 
 export function buildModelMappingObject(
