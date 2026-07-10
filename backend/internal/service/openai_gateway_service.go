@@ -86,6 +86,15 @@ var openaiPassthroughAllowedHeaders = map[string]bool{
 	"x-codex-beta-features": true,
 	"x-codex-turn-state":    true,
 	"x-codex-turn-metadata": true,
+	"version":                     true,
+	"x-stainless-arch":            true,
+	"x-stainless-helper-method":   true,
+	"x-stainless-lang":            true,
+	"x-stainless-os":              true,
+	"x-stainless-package-version": true,
+	"x-stainless-retry-count":     true,
+	"x-stainless-runtime":         true,
+	"x-stainless-runtime-version": true,
 }
 
 // codex_cli_only 拒绝时记录的请求头白名单（仅用于诊断日志，不参与上游透传）
