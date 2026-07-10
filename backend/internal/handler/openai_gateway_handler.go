@@ -85,6 +85,43 @@ func newOpenAIModelMappedBodyCache(body []byte, replace openAIModelBodyReplaceFu
 	}
 }
 
+func openAIModelFallbackBody(
+	body []byte,
+	account *service.Account,
+	requestedModel string,
+	sameAccountRetryCount int,
+	replace openAIModelBodyReplaceFunc,
+) ([]byte, bool) {
+	if sameAccountRetryCount <= 0 || account == nil || replace == nil {
+		return body, false
+	}
+	fallbackModel, ok := account.GetModelMappingFallback(requestedModel, sameAccountRetryCount-1)
+	if !ok {
+		return body, false
+	}
+	return replace(body, fallbackModel), true
+}
+
+func shouldRetryOpenAISameAccount(
+	account *service.Account,
+	requestedModel string,
+	retryableWithoutFallback bool,
+	retryCount int,
+	retryLimit int,
+) bool {
+	if retryCount >= retryLimit {
+		return false
+	}
+	if account == nil {
+		return retryableWithoutFallback
+	}
+	if _, configured := account.GetModelMappingFallback(requestedModel, 0); !configured {
+		return retryableWithoutFallback
+	}
+	_, available := account.GetModelMappingFallback(requestedModel, retryCount)
+	return available
+}
+
 func usageRecordContext(parent context.Context, base context.Context) context.Context {
 	if base == nil {
 		base = context.Background()
@@ -449,13 +486,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 用扣除 compact 心跳字节的口径快照：心跳注释不构成语义响应，
 		// 不能因心跳字节变化而放弃 failover 换号（#3887）。
 		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
+		attemptBody, _ := openAIModelFallbackBody(
+			forwardBody,
+			account,
+			reqModel,
+			sameAccountRetryCount[account.ID],
+			h.gatewayService.ReplaceModelInBody,
+		)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
+			return h.gatewayService.Forward(c.Request.Context(), c, account, attemptBody)
 		}()
 		cyberBlockKeyHTTP := ""
 		if service.GetOpsCyberPolicy(c) != nil {
@@ -507,24 +551,29 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
-					// 池模式：同账号重试
-					if failoverErr.RetryableOnSameAccount {
-						retryLimit := account.GetPoolModeRetryCount()
-						if sameAccountRetryCount[account.ID] < retryLimit {
-							sameAccountRetryCount[account.ID]++
-							reqLog.Warn("openai.pool_mode_same_account_retry",
-								zap.Int64("account_id", account.ID),
-								zap.Int("upstream_status", failoverErr.StatusCode),
-								zap.Int("retry_limit", retryLimit),
-								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
-							)
-							select {
-							case <-c.Request.Context().Done():
-								return
-							case <-time.After(sameAccountRetryDelay):
-							}
-							continue
+					// Pool-mode retries retain their legacy behavior. A configured model
+					// fallback also gets one same-account attempt before account failover.
+					retryLimit := account.GetPoolModeRetryCount()
+					if shouldRetryOpenAISameAccount(
+						account,
+						reqModel,
+						failoverErr.RetryableOnSameAccount,
+						sameAccountRetryCount[account.ID],
+						retryLimit,
+					) {
+						sameAccountRetryCount[account.ID]++
+						reqLog.Warn("openai.pool_mode_same_account_retry",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+							zap.Int("retry_limit", retryLimit),
+							zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+						)
+						select {
+						case <-c.Request.Context().Done():
+							return
+						case <-time.After(sameAccountRetryDelay):
 						}
+						continue
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
@@ -982,6 +1031,13 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
+		attemptBody, _ := openAIModelFallbackBody(
+			forwardBody,
+			account,
+			reqModel,
+			sameAccountRetryCount[account.ID],
+			h.gatewayService.ReplaceModelInBody,
+		)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -989,7 +1045,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
+			return h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, attemptBody, promptCacheKey, defaultMappedModel)
 		}()
 		cyberBlockKeyMsg := ""
 		if service.GetOpsCyberPolicy(c) != nil {
@@ -1034,24 +1090,29 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
-					// 池模式：同账号重试
-					if failoverErr.RetryableOnSameAccount {
-						retryLimit := account.GetPoolModeRetryCount()
-						if sameAccountRetryCount[account.ID] < retryLimit {
-							sameAccountRetryCount[account.ID]++
-							reqLog.Warn("openai_messages.pool_mode_same_account_retry",
-								zap.Int64("account_id", account.ID),
-								zap.Int("upstream_status", failoverErr.StatusCode),
-								zap.Int("retry_limit", retryLimit),
-								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
-							)
-							select {
-							case <-c.Request.Context().Done():
-								return
-							case <-time.After(sameAccountRetryDelay):
-							}
-							continue
+					// Pool-mode retries retain their legacy behavior. A configured model
+					// fallback also gets one same-account attempt before account failover.
+					retryLimit := account.GetPoolModeRetryCount()
+					if shouldRetryOpenAISameAccount(
+						account,
+						reqModel,
+						failoverErr.RetryableOnSameAccount,
+						sameAccountRetryCount[account.ID],
+						retryLimit,
+					) {
+						sameAccountRetryCount[account.ID]++
+						reqLog.Warn("openai_messages.pool_mode_same_account_retry",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+							zap.Int("retry_limit", retryLimit),
+							zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+						)
+						select {
+						case <-c.Request.Context().Done():
+							return
+						case <-time.After(sameAccountRetryDelay):
 						}
+						continue
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
