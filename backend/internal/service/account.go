@@ -799,6 +799,96 @@ func (a *Account) GetMappedModel(requestedModel string) string {
 	return mappedModel
 }
 
+// GetModelMappingFallback returns one alternate target for a requested model.
+// Alternates are stored separately because JSON objects cannot retain duplicate keys.
+func (a *Account) GetModelMappingFallback(requestedModel string, fallbackIndex int) (string, bool) {
+	if a == nil || fallbackIndex < 0 || a.Credentials == nil {
+		return "", false
+	}
+	fallbacks := modelMappingFallbacksFromRaw(a.Credentials["model_mapping_fallbacks"])
+	if len(fallbacks) == 0 {
+		return "", false
+	}
+
+	if targets, ok := resolveModelFallbacks(fallbacks, requestedModel); ok {
+		return modelFallbackAt(targets, fallbackIndex)
+	}
+	normalized := normalizeRequestedModelForLookup(a.Platform, requestedModel)
+	if normalized != requestedModel {
+		if targets, ok := resolveModelFallbacks(fallbacks, normalized); ok {
+			return modelFallbackAt(targets, fallbackIndex)
+		}
+	}
+	return "", false
+}
+
+func modelMappingFallbacksFromRaw(raw any) map[string][]string {
+	result := make(map[string][]string)
+	appendTargets := func(source string, values []string) {
+		source = strings.TrimSpace(source)
+		if source == "" {
+			return
+		}
+		for _, value := range values {
+			if target := strings.TrimSpace(value); target != "" {
+				result[source] = append(result[source], target)
+			}
+		}
+	}
+
+	switch mappings := raw.(type) {
+	case map[string][]string:
+		for source, targets := range mappings {
+			appendTargets(source, targets)
+		}
+	case map[string]any:
+		for source, rawTargets := range mappings {
+			switch targets := rawTargets.(type) {
+			case []string:
+				appendTargets(source, targets)
+			case []any:
+				values := make([]string, 0, len(targets))
+				for _, rawTarget := range targets {
+					if target, ok := rawTarget.(string); ok {
+						values = append(values, target)
+					}
+				}
+				appendTargets(source, values)
+			}
+		}
+	}
+	return result
+}
+
+func resolveModelFallbacks(fallbacks map[string][]string, requestedModel string) ([]string, bool) {
+	if targets, ok := fallbacks[requestedModel]; ok {
+		return targets, true
+	}
+	patterns := make([]string, 0, len(fallbacks))
+	for pattern := range fallbacks {
+		if matchWildcard(pattern, requestedModel) {
+			patterns = append(patterns, pattern)
+		}
+	}
+	if len(patterns) == 0 {
+		return nil, false
+	}
+	sort.Slice(patterns, func(i, j int) bool {
+		if len(patterns[i]) != len(patterns[j]) {
+			return len(patterns[i]) > len(patterns[j])
+		}
+		return patterns[i] < patterns[j]
+	})
+	return fallbacks[patterns[0]], true
+}
+
+func modelFallbackAt(targets []string, index int) (string, bool) {
+	if index < 0 || index >= len(targets) {
+		return "", false
+	}
+	return targets[index], true
+}
+
 // ResolveMappedModel 获取映射后的模型名，并返回是否命中了账号级映射。
 // matched=true 表示命中了精确映射或通配符映射，即使映射结果与原模型名相同。
 func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string, matched bool) {

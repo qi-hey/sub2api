@@ -718,6 +718,45 @@ func TestOpenAIModelMappedBodyCache(t *testing.T) {
 	require.Same(t, &first[0], &second[0])
 }
 
+func TestOpenAIModelFallbackBody(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","input":"hello"}`)
+	account := &service.Account{Credentials: map[string]any{
+		"model_mapping_fallbacks": map[string]any{
+			"gpt-5.4": []any{"gpt-5.6-sol"},
+		},
+	}}
+
+	firstAttempt, used := openAIModelFallbackBody(body, account, "gpt-5.4", 0, service.ReplaceModelInBody)
+	require.False(t, used)
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(firstAttempt, "model").String())
+
+	retryAttempt, used := openAIModelFallbackBody(body, account, "gpt-5.4", 1, service.ReplaceModelInBody)
+	require.True(t, used)
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(retryAttempt, "model").String())
+
+	exhaustedAttempt, used := openAIModelFallbackBody(body, account, "gpt-5.4", 2, service.ReplaceModelInBody)
+	require.False(t, used)
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(exhaustedAttempt, "model").String())
+}
+
+func TestShouldRetryOpenAISameAccountWithModelFallback(t *testing.T) {
+	account := &service.Account{Credentials: map[string]any{
+		"model_mapping_fallbacks": map[string]any{
+			"gpt-5.4": []any{"gpt-5.6-sol"},
+		},
+	}}
+
+	require.True(t, shouldRetryOpenAISameAccount(account, "gpt-5.4", false, 0, 3))
+	require.False(t, shouldRetryOpenAISameAccount(account, "gpt-5.4", false, 1, 3))
+	require.False(t, shouldRetryOpenAISameAccount(account, "gpt-5.4", true, 3, 3))
+
+	legacyAccount := &service.Account{}
+	require.False(t, shouldRetryOpenAISameAccount(legacyAccount, "gpt-5.4", false, 0, 3))
+	require.True(t, shouldRetryOpenAISameAccount(legacyAccount, "gpt-5.4", true, 0, 3))
+	require.True(t, shouldRetryOpenAISameAccount(legacyAccount, "gpt-5.4", true, 2, 3))
+	require.False(t, shouldRetryOpenAISameAccount(legacyAccount, "gpt-5.4", true, 3, 3))
+}
+
 func TestOpenAIResponses_MissingDependencies_ReturnsServiceUnavailable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

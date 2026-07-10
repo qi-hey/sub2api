@@ -322,6 +322,36 @@ func TestAccountGetMappedModel(t *testing.T) {
 	}
 }
 
+func TestAccountGetModelMappingFallback(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-5.4": "gpt-5.5",
+			},
+			"model_mapping_fallbacks": map[string]any{
+				"gpt-5.4": []any{"gpt-5.6-sol"},
+			},
+		},
+	}
+
+	if got := account.GetMappedModel("gpt-5.4"); got != "gpt-5.5" {
+		t.Fatalf("primary mapping = %q, want %q", got, "gpt-5.5")
+	}
+
+	if got, ok := account.GetModelMappingFallback("gpt-5.4", 0); !ok || got != "gpt-5.6-sol" {
+		t.Fatalf("first fallback = %q, ok=%v, want %q", got, ok, "gpt-5.6-sol")
+	}
+	if got, ok := account.GetModelMappingFallback("gpt-5.4", 1); ok || got != "" {
+		t.Fatalf("exhausted fallback = %q, ok=%v, want no candidate", got, ok)
+	}
+	if got, ok := account.GetModelMappingFallback("gpt-5.6-terra", 0); ok || got != "" {
+		t.Fatalf("unmapped fallback = %q, ok=%v, want no candidate", got, ok)
+	}
+}
+
 func TestAccountGetModelMapping_AntigravityNormalizesGemini31ProAliases(t *testing.T) {
 	t.Parallel()
 

@@ -434,6 +434,9 @@ func TestBuildSchedulerMetadataAccount_KeepsSparkShadowRoutingIdentity(t *testin
 			"compact_model_mapping": map[string]any{
 				"gpt-5.4": "gpt-5.4-openai-compact",
 			},
+			"model_mapping_fallbacks": map[string]any{
+				"gpt-5.4": []any{"gpt-5.6-sol"},
+			},
 			"access_token": "drop-me",
 		},
 	}
@@ -445,6 +448,7 @@ func TestBuildSchedulerMetadataAccount_KeepsSparkShadowRoutingIdentity(t *testin
 	require.Equal(t, service.QuotaDimensionSpark, got.QuotaDimension)
 	require.Equal(t, map[string]any{"gpt-5.3-codex-spark": "gpt-5.3-codex-spark"}, got.Credentials["model_mapping"])
 	require.Equal(t, map[string]any{"gpt-5.4": "gpt-5.4-openai-compact"}, got.Credentials["compact_model_mapping"])
+	require.Equal(t, map[string]any{"gpt-5.4": []any{"gpt-5.6-sol"}}, got.Credentials["model_mapping_fallbacks"])
 	require.Nil(t, got.Credentials["access_token"])
 }
 

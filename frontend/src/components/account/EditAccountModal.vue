@@ -2623,6 +2623,7 @@ import {
 import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
+  buildModelMappingConfiguration,
   buildModelMappingObject,
   splitModelMappingObject,
   isValidWildcardPattern
@@ -3155,8 +3156,11 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 }
 
-const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) => {
-  const parsed = splitModelMappingObject(rawMapping)
+const loadModelRestrictionFromMapping = (
+  rawMapping?: Record<string, unknown>,
+  rawFallbacks?: Record<string, unknown>
+) => {
+  const parsed = splitModelMappingObject(rawMapping, rawFallbacks)
   allowedModels.value = parsed.allowedModels
   modelMappings.value = parsed.modelMappings
   modelRestrictionMode.value =
@@ -3172,11 +3176,16 @@ const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>
   const shouldApplyModelMapping = !openaiPassthroughEnabled.value
 
   if (shouldApplyModelMapping) {
-    const modelMapping = buildModelRestrictionMapping()
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
+    const config = buildModelMappingConfiguration('combined', allowedModels.value, modelMappings.value)
+    if (config.modelMapping) {
+      credentials.model_mapping = config.modelMapping
     } else {
       delete credentials.model_mapping
+    }
+    if (config.modelMappingFallbacks) {
+      credentials.model_mapping_fallbacks = config.modelMappingFallbacks
+    } else {
+      delete credentials.model_mapping_fallbacks
     }
   } else if (!credentials.model_mapping) {
     delete credentials.model_mapping
@@ -3424,7 +3433,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
-    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(
+      credentials.model_mapping as Record<string, unknown> | undefined,
+      newAccount.platform === 'openai'
+        ? credentials.model_mapping_fallbacks as Record<string, unknown> | undefined
+        : undefined
+    )
 
     // Load pool mode
     poolModeEnabled.value = credentials.pool_mode === true
@@ -3497,7 +3511,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load model mappings for OpenAI/Grok OAuth accounts
     if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
-      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
+      loadModelRestrictionFromMapping(
+        oauthCredentials.model_mapping as Record<string, unknown> | undefined,
+        newAccount.platform === 'openai'
+          ? oauthCredentials.model_mapping_fallbacks as Record<string, unknown> | undefined
+          : undefined
+      )
     } else {
       modelRestrictionMode.value = 'whitelist'
       modelMappings.value = []
@@ -4035,11 +4054,25 @@ const handleSubmit = async () => {
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
       if (shouldApplyModelMapping) {
-        const modelMapping = buildModelRestrictionMapping()
-        if (modelMapping) {
-          newCredentials.model_mapping = modelMapping
+        if (props.account.platform === 'openai') {
+          const config = buildModelMappingConfiguration('combined', allowedModels.value, modelMappings.value)
+          if (config.modelMapping) {
+            newCredentials.model_mapping = config.modelMapping
+          } else {
+            delete newCredentials.model_mapping
+          }
+          if (config.modelMappingFallbacks) {
+            newCredentials.model_mapping_fallbacks = config.modelMappingFallbacks
+          } else {
+            delete newCredentials.model_mapping_fallbacks
+          }
         } else {
-          delete newCredentials.model_mapping
+          const modelMapping = buildModelRestrictionMapping()
+          if (modelMapping) {
+            newCredentials.model_mapping = modelMapping
+          } else {
+            delete newCredentials.model_mapping
+          }
         }
       } else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
@@ -4235,7 +4268,10 @@ const handleSubmit = async () => {
     }
 
     // OpenAI/Grok OAuth: persist model mapping to credentials
-    if ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'oauth') {
+    if (
+      (props.account.platform === 'openai' || props.account.platform === 'grok') &&
+      (props.account.type === 'oauth' || props.account.type === 'setup-token')
+    ) {
       const currentCredentials = isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||

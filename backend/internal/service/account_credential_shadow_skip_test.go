@@ -94,3 +94,15 @@ func TestEnsureOpenAIPrivacySkipsShadow(t *testing.T) {
 	require.Equal(t, "", got)
 	require.False(t, privacyCalled, "privacyClientFactory 不应被影子账号触发")
 }
+
+func TestSparkShadowAllowsModelMappingFallbackCredentials(t *testing.T) {
+	credentials := map[string]any{
+		"model_mapping": map[string]any{"gpt-5.4": "gpt-5.5"},
+		"model_mapping_fallbacks": map[string]any{
+			"gpt-5.4": []any{"gpt-5.6-sol"},
+		},
+	}
+
+	require.True(t, isAllowedSparkShadowCredentialsUpdate(credentials))
+	require.Equal(t, credentials, sanitizeSparkShadowCredentials(credentials))
+}
