@@ -36,6 +36,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	if c != nil {
+		c.Set(openAIPassthroughOutboundShapeDebugKey, "")
+		c.Set(OpsUpstreamErrorDetailKey, "")
+	}
 	upstreamPassthroughModel := ""
 	passthroughForwardModel := strings.TrimSpace(reqModel)
 	if account != nil && account.Type == AccountTypeAPIKey && passthroughForwardModel != "" {
