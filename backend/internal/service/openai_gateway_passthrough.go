@@ -37,9 +37,25 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	upstreamPassthroughModel := ""
+	passthroughForwardModel := strings.TrimSpace(reqModel)
+	if account != nil && account.Type == AccountTypeAPIKey && passthroughForwardModel != "" {
+		if mappedModel, matched := account.ResolveMappedModel(passthroughForwardModel); matched {
+			mappedModel = strings.TrimSpace(mappedModel)
+			if mappedModel != "" && mappedModel != passthroughForwardModel {
+				nextBody, setErr := sjson.SetBytes(body, "model", mappedModel)
+				if setErr != nil {
+					return nil, fmt.Errorf("set passthrough mapped model: %w", setErr)
+				}
+				body = nextBody
+				upstreamPassthroughModel = mappedModel
+				passthroughForwardModel = mappedModel
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI automatic passthrough] Model mapping applied: %s -> %s (account: %s)", reqModel, mappedModel, account.Name)
+			}
+		}
+	}
 	if isOpenAIResponsesCompactPath(c) {
-		compactMappedModel := resolveOpenAICompactForwardModel(account, reqModel)
-		if compactMappedModel != "" && compactMappedModel != reqModel {
+		compactMappedModel := resolveOpenAICompactForwardModel(account, passthroughForwardModel)
+		if compactMappedModel != "" && compactMappedModel != passthroughForwardModel {
 			nextBody, setErr := sjson.SetBytes(body, "model", compactMappedModel)
 			if setErr != nil {
 				return nil, fmt.Errorf("set compact passthrough model: %w", setErr)
@@ -47,6 +63,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			body = nextBody
 			upstreamPassthroughModel = compactMappedModel
 			attemptImageIntentInvalidated = true
+			passthroughForwardModel = compactMappedModel
 		}
 	}
 
@@ -101,6 +118,33 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, policyErr
 	}
 	body = updatedBody
+	if account != nil && account.Type == AccountTypeAPIKey {
+		updatedBody, updated, updateErr := ensureOpenAIAPIKeyPassthroughCodexBody(body)
+		if updateErr != nil {
+			return nil, updateErr
+		}
+		if updated {
+			body = updatedBody
+		}
+		if shouldUseAnyRouterOpenAIPassthroughCodexShape(account, passthroughForwardModel) {
+			updatedBody, updated, updateErr = ensureAnyRouterOpenAIPassthroughCodexBody(c, body)
+			if updateErr != nil {
+				return nil, updateErr
+			}
+			if updated {
+				body = updatedBody
+			}
+		}
+	}
+	clientRequestedStream := reqStream
+	if shouldForceOpenAIPassthroughUpstreamStream(account, passthroughForwardModel, reqStream) {
+		nextBody, setErr := sjson.SetBytes(body, "stream", true)
+		if setErr != nil {
+			return nil, fmt.Errorf("force passthrough upstream stream: %w", setErr)
+		}
+		body = nextBody
+		reqStream = true
+	}
 
 	apiKey := getAPIKeyFromContext(c)
 	// 同一 attempt 的最终 model/body 只判定一次，权限检查与后续图片状态设置共用该结果。
@@ -192,6 +236,12 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		if buildErr != nil {
 			return nil, buildErr
 		}
+		if shapeDebug := buildOpenAIPassthroughOutboundShapeDebug(account, upstreamReq, body); shapeDebug != "" {
+			if c != nil {
+				c.Set(openAIPassthroughOutboundShapeDebugKey, shapeDebug)
+			}
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough debug] outbound_shape=%s", shapeDebug)
+		}
 
 		upstreamStart := time.Now()
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
@@ -236,7 +286,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
-	if reqStream {
+	if clientRequestedStream {
 		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
 		if err != nil {
 			return nil, err
@@ -277,7 +327,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		UpstreamModel:   upstreamPassthroughModel,
 		ServiceTier:     serviceTier,
 		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
+		Stream:          clientRequestedStream,
 		OpenAIWSMode:    false,
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
@@ -377,6 +427,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	for key, values := range authHeaders {
 		for _, value := range values {
 			req.Header.Add(key, value)
+		}
+	}
+	if account.Type == AccountTypeAPIKey {
+		ensureOpenAIAPIKeyPassthroughCodexHeaders(c, req)
+		if gjson.GetBytes(body, "stream").Bool() {
+			req.Header.Set("accept", "text/event-stream")
 		}
 	}
 
@@ -576,6 +632,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 		}
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
+	upstreamDetail = mergeOpenAIPassthroughOutboundShapeDetail(upstreamDetail, c)
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
 	reqModel, _, _ := extractOpenAIRequestMetaFromBody(requestBody)
@@ -636,6 +693,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 		}
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
+	upstreamDetail = mergeOpenAIPassthroughOutboundShapeDetail(upstreamDetail, c)
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
 	// 错误体虽不会原样透传，运行态账号状态仍需更新，避免粘性路由继续复用
@@ -675,6 +733,9 @@ func isOpenAIPassthroughAllowedRequestHeader(lowerKey string, allowTimeoutHeader
 	}
 	if isOpenAIPassthroughTimeoutHeader(lowerKey) {
 		return allowTimeoutHeaders
+	}
+	if strings.HasPrefix(lowerKey, "x-codex-") {
+		return true
 	}
 	return openaiPassthroughAllowedHeaders[lowerKey]
 }
@@ -1333,6 +1394,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		if contentType == "" {
 			contentType = "text/event-stream"
 		}
+	} else {
+		c.Writer.Header().Set("Content-Type", contentType)
 	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)

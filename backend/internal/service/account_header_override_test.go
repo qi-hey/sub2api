@@ -119,6 +119,54 @@ func TestGetHeaderOverrides(t *testing.T) {
 	require.Equal(t, map[string]string{"x-ok": "ok"}, defensive.GetHeaderOverrides())
 }
 
+func TestGetHeaderOverridesReadsLegacyCustomHeadersFromExtra(t *testing.T) {
+	acc := headerOverrideTestAccount(PlatformOpenAI, AccountTypeOAuth, nil)
+	acc.Extra = map[string]any{
+		legacyExtraCustomHeadersEnabled: true,
+		legacyExtraCustomHeaders: map[string]any{
+			"User-Agent":    "legacy-agent/1.0",
+			" X-App ":       "cli",
+			"authorization": "Bearer leaked",
+			"x-empty":       "",
+		},
+	}
+
+	require.Equal(t, map[string]string{
+		"user-agent": "legacy-agent/1.0",
+		"x-app":      "cli",
+	}, acc.GetHeaderOverrides())
+
+	h := http.Header{}
+	h.Set("User-Agent", "original-agent")
+	h.Set("Authorization", "Bearer real")
+	acc.ApplyHeaderOverrides(h)
+	require.Equal(t, "legacy-agent/1.0", h.Get("User-Agent"))
+	require.Equal(t, "Bearer real", h.Get("Authorization"))
+}
+
+func TestGetHeaderOverridesCredentialsWinOverLegacyCustomHeaders(t *testing.T) {
+	acc := headerOverrideTestAccount(PlatformOpenAI, AccountTypeAPIKey, map[string]any{
+		credKeyHeaderOverrideEnabled: true,
+		credKeyHeaderOverrides: map[string]any{
+			"user-agent": "current-agent/2.0",
+			"x-current":  "current",
+		},
+	})
+	acc.Extra = map[string]any{
+		legacyExtraCustomHeadersEnabled: true,
+		legacyExtraCustomHeaders: map[string]string{
+			"user-agent": "legacy-agent/1.0",
+			"x-legacy":   "legacy",
+		},
+	}
+
+	require.Equal(t, map[string]string{
+		"user-agent": "current-agent/2.0",
+		"x-current":  "current",
+		"x-legacy":   "legacy",
+	}, acc.GetHeaderOverrides())
+}
+
 func TestApplyHeaderOverrides(t *testing.T) {
 	acc := headerOverrideTestAccount(PlatformAnthropic, AccountTypeAPIKey, map[string]any{
 		credKeyHeaderOverrideEnabled: true,
