@@ -3418,10 +3418,11 @@ import { useAppStore } from '@/stores/app'
 import {
   claudeModels,
   getPresetMappingsByPlatform,
-  getModelsByPlatform,
   commonErrorCodes,
+  buildCreateAccountModelRestrictionConfig,
   buildModelMappingObject,
   fetchAntigravityDefaultMappings,
+  getCreateAccountModelRestrictionDefaults,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
@@ -3623,6 +3624,28 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+
+const applyCreateAccountModelDefaults = (platform: string) => {
+  const defaults = getCreateAccountModelRestrictionDefaults(platform)
+  allowedModels.value = defaults.allowedModels
+  modelMappings.value = defaults.modelMappings
+}
+
+const applyCreateAccountModelRestrictionCredentials = (credentials: Record<string, unknown>) => {
+  const config = buildCreateAccountModelRestrictionConfig(
+    form.platform,
+    modelRestrictionMode.value,
+    allowedModels.value,
+    modelMappings.value
+  )
+  if (config.modelMapping) {
+    credentials.model_mapping = config.modelMapping
+  }
+  if (config.modelMappingFallbacks) {
+    credentials.model_mapping_fallbacks = config.modelMappingFallbacks
+  }
+}
+
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -4013,8 +4036,8 @@ watch(
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
-      // Modal opened - fill related models
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      // Modal opened - fill platform defaults.
+      applyCreateAccountModelDefaults(form.platform)
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
@@ -4071,9 +4094,11 @@ watch(
           : newPlatform === 'grok'
             ? 'https://api.x.ai/v1'
             : 'https://api.anthropic.com'
-    // Clear model-related settings
-    allowedModels.value = []
-    modelMappings.value = []
+    // Reset model-related settings to the selected platform defaults.
+    applyCreateAccountModelDefaults(newPlatform)
+    if (newPlatform === 'openai') {
+      modelRestrictionMode.value = 'whitelist'
+    }
     // Antigravity: 默认使用映射模式并填充默认映射
     if (newPlatform === 'antigravity') {
       antigravityModelRestrictionMode.value = 'mapping'
@@ -4190,8 +4215,11 @@ const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | '
 watch(
   [modelRestrictionMode, () => form.platform],
   ([newMode]) => {
+    const defaults = getCreateAccountModelRestrictionDefaults(form.platform)
     if (newMode === 'whitelist') {
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      allowedModels.value = defaults.allowedModels
+    } else if (form.platform === 'openai' && modelMappings.value.length === 0) {
+      modelMappings.value = defaults.modelMappings
     }
   }
 )
@@ -4930,10 +4958,7 @@ const handleSubmit = async () => {
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
   if (!isOpenAIModelRestrictionDisabled.value) {
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
-    }
+    applyCreateAccountModelRestrictionCredentials(credentials)
   }
   if (form.platform === 'openai') {
     applyOpenAIEndpointCapabilities(credentials)
@@ -5090,10 +5115,8 @@ const createAccountAndFinish = async (
     if (!credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
     }
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
-    } else {
+    applyCreateAccountModelRestrictionCredentials(credentials)
+    if (!credentials.model_mapping) {
       delete credentials.model_mapping
     }
   }
@@ -5151,10 +5174,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
         const extra = grokOAuth.buildExtraInfo(tokenInfo)
         const accountName = refreshTokens.length > 1 ? `${form.name || tokenInfo.email || 'Grok OAuth Account'} #${i + 1}` : (form.name || tokenInfo.email || 'Grok OAuth Account')
 
-        const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-        if (modelMapping) {
-          credentials.model_mapping = modelMapping
-        }
+        applyCreateAccountModelRestrictionCredentials(credentials)
         if (!applyTempUnschedConfig(credentials)) {
           return
         }
@@ -5235,10 +5255,7 @@ const handleOpenAIExchange = async (authCode: string) => {
 
     // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
     if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
-      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-      if (modelMapping) {
-        credentials.model_mapping = modelMapping
-      }
+      applyCreateAccountModelRestrictionCredentials(credentials)
     }
     if (shouldCreateOpenAI) {
       const compactModelMapping = buildOpenAICompactModelMapping()
@@ -5289,10 +5306,7 @@ const OPENAI_MOBILE_RT_CLIENT_ID = 'app_LlGpXReQgckcGGUo2JrYvtJK'
 const buildOpenAICodexImportCredentialExtras = (): Record<string, unknown> | null => {
   const credentials: Record<string, unknown> = {}
   if (!isOpenAIModelRestrictionDisabled.value) {
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
-    }
+    applyCreateAccountModelRestrictionCredentials(credentials)
   }
 
   const compactModelMapping = buildOpenAICompactModelMapping()
@@ -5489,10 +5503,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
 
         // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
         if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
-          const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-          if (modelMapping) {
-            credentials.model_mapping = modelMapping
-          }
+          applyCreateAccountModelRestrictionCredentials(credentials)
         }
         if (shouldCreateOpenAI) {
           const compactModelMapping = buildOpenAICompactModelMapping()
