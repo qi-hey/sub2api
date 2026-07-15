@@ -277,6 +277,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		// 透传模式默认保持原样代理；容量错误以及 API-key 上游的瞬时
 		// 5xx 应先触发多账号 failover，且此时尚未写入下游响应。
 		// probeBody 已在上方任务探测时读取过一次，直接复用避免重复读取。
+		if account != nil && account.IsPoolMode() {
+			if failover, retrySameAccount := shouldFailoverOpenAIPassthroughPoolModeResponse(resp.StatusCode, probeBody); failover {
+				failoverErr := s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
+				if typedErr, ok := failoverErr.(*UpstreamFailoverError); ok {
+					typedErr.RetryableOnSameAccount = retrySameAccount
+				}
+				return nil, failoverErr
+			}
+		}
 		if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 		}
