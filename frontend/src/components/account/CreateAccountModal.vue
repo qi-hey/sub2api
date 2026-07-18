@@ -3119,10 +3119,11 @@
         <!-- Group Selection - 仅标准模式显示 -->
         <GroupSelector
           v-if="!authStore.isSimpleMode"
-          v-model="form.group_ids"
+          :model-value="form.group_ids"
           :groups="groups"
           :platform="form.platform"
           :mixed-scheduling="mixedScheduling"
+          @update:model-value="handleGroupSelectionUpdate"
           data-tour="account-form-groups"
         />
       </div>
@@ -4075,6 +4076,30 @@ const form = reactive({
   expires_at: null as number | null
 })
 
+const groupSelectionTouched = ref(false)
+
+const compatibleGroupIds = () => {
+  if (authStore.isSimpleMode) return []
+  return props.groups
+    .filter((group) => {
+      if (form.platform === 'antigravity' && mixedScheduling.value) {
+        return group.platform === 'antigravity' || group.platform === 'anthropic' || group.platform === 'gemini'
+      }
+      return group.platform === form.platform
+    })
+    .map((group) => group.id)
+}
+
+const applyDefaultGroupSelection = () => {
+  if (groupSelectionTouched.value) return
+  form.group_ids = compatibleGroupIds()
+}
+
+const handleGroupSelectionUpdate = (groupIds: number[]) => {
+  groupSelectionTouched.value = true
+  form.group_ids = groupIds
+}
+
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
   // Antigravity upstream 类型不需要 OAuth 流程
@@ -4119,6 +4144,24 @@ const canExchangeCode = computed(() => {
 })
 
 // Watchers
+watch(
+  [
+    () => props.show,
+    () => form.platform,
+    mixedScheduling,
+    () => props.groups.map((group) => `${group.id}:${group.platform}`).join('|')
+  ],
+  ([show, platform, mixed], previous) => {
+    if (!show) return
+    const [wasShown, previousPlatform, previousMixed] = previous || []
+    if (!wasShown || platform !== previousPlatform || mixed !== previousMixed) {
+      groupSelectionTouched.value = false
+    }
+    applyDefaultGroupSelection()
+  },
+  { immediate: true }
+)
+
 watch(
   () => props.show,
   (newVal) => {
@@ -4616,6 +4659,7 @@ const resetForm = () => {
   form.priority = 1
   form.rate_multiplier = 1
   form.group_ids = []
+  groupSelectionTouched.value = false
   form.expires_at = null
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'

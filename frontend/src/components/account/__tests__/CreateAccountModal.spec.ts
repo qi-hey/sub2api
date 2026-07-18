@@ -6,10 +6,12 @@ const {
   createAccountMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
+  authStoreState,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
+  authStoreState: { isSimpleMode: true },
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -21,7 +23,7 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isSimpleMode: true }),
+  useAuthStore: () => authStoreState,
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -81,9 +83,10 @@ const OAuthAuthorizationFlowStub = defineComponent({
   `,
 })
 
-function mountModal() {
+function mountModal(options: { groups?: any[]; simpleMode?: boolean } = {}) {
+  authStoreState.isSimpleMode = options.simpleMode ?? true
   return mount(CreateAccountModal, {
-    props: { show: true, proxies: [], groups: [] },
+    props: { show: true, proxies: [], groups: options.groups ?? [] },
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
@@ -94,13 +97,59 @@ function mountModal() {
         PlatformIcon: true,
         ProxySelector: true,
         ProxyAdBanner: true,
-        GroupSelector: true,
+        GroupSelector: authStoreState.isSimpleMode,
         ModelWhitelistSelector: true,
         QuotaLimitCard: true,
       },
     },
   })
 }
+
+const selectableGroups = [
+  { id: 1, name: 'Claude', platform: 'anthropic', rate_multiplier: 1, account_count: 1 },
+  { id: 2, name: 'Codex', platform: 'openai', rate_multiplier: 1, account_count: 1 },
+  { id: 3, name: 'CC Switch', platform: 'openai', rate_multiplier: 1, account_count: 1 },
+]
+
+describe('CreateAccountModal default group selection', () => {
+  beforeEach(() => {
+    authStoreState.isSimpleMode = true
+  })
+
+  it('selects every compatible group for the current platform by default', async () => {
+    const wrapper = mountModal({ groups: selectableGroups, simpleMode: false })
+    await flushPromises()
+
+    expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([1])
+
+    await selectButtonByText(wrapper, 'OpenAI')
+
+    expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([2, 3])
+  })
+
+  it('initializes defaults when groups arrive after the dialog opens', async () => {
+    const wrapper = mountModal({ groups: [], simpleMode: false })
+
+    await wrapper.setProps({ groups: selectableGroups })
+
+    expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([1])
+  })
+
+  it('preserves a manual deselection when the group list refreshes', async () => {
+    const wrapper = mountModal({ groups: selectableGroups, simpleMode: false })
+    await flushPromises()
+    await wrapper.get('input[type="checkbox"][value="1"]').setValue(false)
+
+    await wrapper.setProps({
+      groups: [
+        ...selectableGroups,
+        { id: 4, name: 'Claude 2', platform: 'anthropic', rate_multiplier: 1, account_count: 0 },
+      ],
+    })
+
+    expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([])
+  })
+})
 
 async function selectButtonByText(wrapper: ReturnType<typeof mountModal>, text: string) {
   const button = wrapper.findAll('button').find((candidate) => candidate.text().includes(text))
