@@ -176,7 +176,7 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t 
 	require.Equal(t, "gpt-5", resp.Data[0].ID)
 }
 
-func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefaults(t *testing.T) {
+func TestAccountHandlerGetAvailableModels_OpenAIPassthroughUsesExplicitModelMapping(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
 		account: service.Account{
@@ -209,8 +209,8 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefau
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.NotEmpty(t, resp.Data)
-	require.NotEqual(t, "gpt-5", resp.Data[0].ID)
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "gpt-5", resp.Data[0].ID)
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAISparkShadowReturnsMappingModels(t *testing.T) {

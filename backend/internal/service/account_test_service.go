@@ -593,8 +593,16 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if isOAuth {
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
+	isAnyRouterCodexProbe := !isOAuth && shouldUseAnyRouterOpenAIPassthroughCodexShape(credentialAccount, upstreamTestModelID)
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
 	payloadBytes, _ := json.Marshal(payload)
+	if isAnyRouterCodexProbe {
+		updatedPayload, _, updateErr := ensureAnyRouterOpenAIPassthroughCodexBody(c, payloadBytes)
+		if updateErr != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to create Any Router test payload: %s", updateErr.Error()))
+		}
+		payloadBytes = updatedPayload
+	}
 
 	// Send test_start event once. A task-invalid Agent Identity response may
 	// restart this probe after registering a replacement task.
@@ -622,6 +630,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		}
 	} else {
 		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
+	if isAnyRouterCodexProbe {
+		req.Header.Set("Accept", "text/event-stream")
+		req.Header.Set("User-Agent", codexCLIUserAgent)
+		req.Header.Set("Originator", "codex_cli_rs")
+		ensureOpenAIAPIKeyPassthroughCodexHeaders(c, req)
 	}
 
 	// Set OAuth-specific headers for ChatGPT internal API
