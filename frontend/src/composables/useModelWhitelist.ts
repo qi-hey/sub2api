@@ -477,6 +477,11 @@ const defaultOpenAIModelMappings: ModelMappingEntry[] = [
   { from: 'gpt-5.4-mini', to: 'gpt-5.6-sol' }
 ]
 
+const defaultGrokModelMappings: ModelMappingEntry[] = [
+  { from: 'claude-opus-4-8', to: 'grok-4.5' },
+  { from: 'gpt-5.4', to: 'grok-4.5' }
+]
+
 export function getCreateAccountModelRestrictionDefaults(platform: string): {
   allowedModels: string[]
   modelMappings: ModelMappingEntry[]
@@ -485,6 +490,12 @@ export function getCreateAccountModelRestrictionDefaults(platform: string): {
     return {
       allowedModels: [...defaultOpenAIAllowedModels],
       modelMappings: defaultOpenAIModelMappings.map(mapping => ({ ...mapping }))
+    }
+  }
+  if (platform === 'grok' || platform === 'xai') {
+    return {
+      allowedModels: [...getModelsByPlatform(platform)],
+      modelMappings: defaultGrokModelMappings.map(mapping => ({ ...mapping }))
     }
   }
   return {

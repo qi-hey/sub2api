@@ -112,11 +112,13 @@ const selectableGroups = [
   { id: 1, name: 'Claude', platform: 'anthropic', rate_multiplier: 1, account_count: 1 },
   { id: 2, name: 'Codex', platform: 'openai', rate_multiplier: 1, account_count: 1 },
   { id: 3, name: 'CC Switch', platform: 'openai', rate_multiplier: 1, account_count: 1 },
+  { id: 12, name: 'Grok', platform: 'grok', rate_multiplier: 1, account_count: 1 },
 ]
 
 describe('CreateAccountModal default group selection', () => {
   beforeEach(() => {
     authStoreState.isSimpleMode = true
+    createAccountMock.mockReset().mockResolvedValue({ id: 43, platform: 'grok', type: 'apikey' })
   })
 
   it('selects every compatible group for the current platform by default', async () => {
@@ -152,7 +154,63 @@ describe('CreateAccountModal default group selection', () => {
 
     expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([])
   })
+
+  it('selects Grok groups and restores the two Grok mappings on platform return', async () => {
+    const wrapper = mountModal({ groups: selectableGroups, simpleMode: false })
+    await flushPromises()
+
+    await selectButtonByText(wrapper, 'Grok')
+    await flushPromises()
+
+    expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([12])
+    expect(readVisibleModelMappings(wrapper)).toEqual([
+      ['claude-opus-4-8', 'grok-4.5'],
+      ['gpt-5.4', 'grok-4.5'],
+    ])
+
+    await selectButtonByText(wrapper, 'OpenAI')
+    expect(readVisibleModelMappings(wrapper)).not.toContainEqual(['claude-opus-4-8', 'grok-4.5'])
+
+    await selectButtonByText(wrapper, 'Grok')
+    expect(readVisibleModelMappings(wrapper)).toEqual([
+      ['claude-opus-4-8', 'grok-4.5'],
+      ['gpt-5.4', 'grok-4.5'],
+    ])
+  })
+
+  it('submits the Grok group and compatibility mappings', async () => {
+    const wrapper = mountModal({ groups: selectableGroups, simpleMode: false })
+    await flushPromises()
+
+    await selectButtonByText(wrapper, 'Grok')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Grok account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('xai-test')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'grok',
+      group_ids: [12],
+      credentials: {
+        model_mapping: {
+          'claude-opus-4-8': 'grok-4.5',
+          'gpt-5.4': 'grok-4.5',
+        },
+      },
+    })
+  })
 })
+
+function readVisibleModelMappings(wrapper: ReturnType<typeof mountModal>) {
+  const from = wrapper.findAll('input[placeholder="admin.accounts.requestModel"]')
+  const to = wrapper.findAll('input[placeholder="admin.accounts.actualModel"]')
+  return from.map((input, index) => [
+    (input.element as HTMLInputElement).value,
+    (to[index]?.element as HTMLInputElement | undefined)?.value,
+  ])
+}
 
 async function selectButtonByText(wrapper: ReturnType<typeof mountModal>, text: string) {
   const button = wrapper.findAll('button').find((candidate) => candidate.text().includes(text))

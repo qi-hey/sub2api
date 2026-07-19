@@ -50,6 +50,30 @@ describe('useModelWhitelist', () => {
     })
   })
 
+  it('uses the two compatibility mappings for newly created Grok accounts', () => {
+    const defaults = getCreateAccountModelRestrictionDefaults('grok')
+
+    expect(defaults.modelMappings).toEqual([
+      { from: 'claude-opus-4-8', to: 'grok-4.5' },
+      { from: 'gpt-5.4', to: 'grok-4.5' }
+    ])
+    expect(defaults.allowedModels).toContain('grok-4.5')
+
+    const config = buildCreateAccountModelRestrictionConfig(
+      'grok',
+      'mapping',
+      defaults.allowedModels,
+      defaults.modelMappings
+    )
+    expect(config).toEqual({
+      modelMapping: {
+        'claude-opus-4-8': 'grok-4.5',
+        'gpt-5.4': 'grok-4.5'
+      },
+      modelMappingFallbacks: null
+    })
+  })
+
   it('keeps non-OpenAI create modes exclusive', () => {
     expect(
       buildCreateAccountModelRestrictionConfig(

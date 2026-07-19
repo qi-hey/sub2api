@@ -211,6 +211,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 			return nil, err
 		}
 	}
+	if req.Platform == PlatformGrok {
+		req.Credentials = ApplyGrokCreateDefaults(req.Credentials)
+	}
 
 	// 创建账号
 	account := &Account{

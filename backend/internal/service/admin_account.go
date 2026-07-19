@@ -511,6 +511,12 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input.Platform == PlatformGrok {
+		normalizedInput := *input
+		normalizedInput.Credentials = ApplyGrokCreateDefaults(input.Credentials)
+		input = &normalizedInput
+	}
+
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
