@@ -28,3 +28,17 @@ verification:
   exclusion; local execution skipped because Docker is unavailable
 - Linux/amd64 embed build: passed
 - production deletion endpoint invoked during verification: no
+
+deployment:
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=358fa678c13e8d9733849649885962b104f2ede4280d3fe66561d90cb6be410e
+- binary_backup=/opt/sub2api/backups/sub2api-before-forbidden-r4-20260719-183910
+- database_backup=/opt/sub2api/backups/sub2api-before-forbidden-r4-20260719-183910.dump
+- database_backup_pg_restore_list=passed
+- service_state=active/running
+- service_restarts_after_deploy=0
+- health_status=ok
+- forbidden_db_count=2049
+- forbidden_api_count=2049
+- forbidden_ui_asset=assets/AccountsView-MUuU0yPc.js
+- deletion_endpoint_log_matches=0
