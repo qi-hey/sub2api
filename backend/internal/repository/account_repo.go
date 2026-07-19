@@ -717,6 +717,81 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (r *accountRepository) DeleteForbidden(ctx context.Context, id int64) error {
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+
+	var txClient *dbent.Client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		txClient = tx.Client()
+	} else {
+		txClient = r.client
+	}
+
+	_, err = txClient.Account.Query().
+		Where(
+			dbaccount.IDEQ(id),
+			dbaccount.DeletedAtIsNil(),
+			dbaccount.PlatformEQ(service.PlatformGrok),
+			dbpredicate.Account(func(s *entsql.Selector) {
+				s.Where(sqljson.ValueEQ(
+					dbaccount.FieldExtra,
+					403,
+					sqljson.Path("grok_usage_snapshot", "status_code"),
+				))
+			}),
+		).
+		ForUpdate().
+		Only(ctx)
+	if dbent.IsNotFound(err) {
+		return service.ErrAccountNotForbidden
+	}
+	if err != nil {
+		return err
+	}
+
+	groupEntries, err := txClient.AccountGroup.Query().
+		Where(dbaccountgroup.AccountIDEQ(id)).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+	groupIDs := make([]int64, 0, len(groupEntries))
+	for _, entry := range groupEntries {
+		groupIDs = append(groupIDs, entry.GroupID)
+	}
+
+	if _, err := txClient.AccountGroup.Delete().Where(dbaccountgroup.AccountIDEQ(id)).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := txClient.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", id); err != nil {
+		return err
+	}
+	deleted, err := txClient.Account.Delete().
+		Where(dbaccount.IDEQ(id), dbaccount.DeletedAtIsNil()).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	if deleted != 1 {
+		return service.ErrAccountNotForbidden
+	}
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	r.deleteSchedulerAccountSnapshot(ctx, id)
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue guarded account delete failed: account=%d err=%v", id, err)
+	}
+	return nil
+}
+
 func (r *accountRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "")
 }

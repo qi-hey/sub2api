@@ -15,6 +15,7 @@ type stubAdminService struct {
 	groups                              []service.Group
 	accounts                            []service.Account
 	accountSchedulerScoreFilterAccounts []service.Account
+	accountSchedulerScoreFilterSets     [][]service.Account
 	openAISchedulerScorePoolAccounts    []service.Account
 	schedulerScoreFilterCalls           int
 	openAISchedulerScorePoolCalls       int
@@ -38,7 +39,10 @@ type stubAdminService struct {
 	updateAccountCalls                  int
 	updateAccountExtraCalls             int
 	deletedAccountIDs                   []int64
+	deletedForbiddenAccountIDs          []int64
+	attemptedForbiddenAccountIDs        []int64
 	deleteAccountErrors                 map[int64]error
+	deleteForbiddenAccountErrors        map[int64]error
 	checkMixedErr                       error
 	lastMixedCheck                      struct {
 		accountID int64
@@ -55,6 +59,14 @@ type stubAdminService struct {
 		sortBy      string
 		sortOrder   string
 		calls       int
+	}
+	lastSchedulerScoreFilter struct {
+		platform    string
+		accountType string
+		status      string
+		search      string
+		groupID     int64
+		privacyMode string
 	}
 	lastListUsers struct {
 		page      int
@@ -372,7 +384,20 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 }
 
 func (s *stubAdminService) ListAccountsForSchedulerScoreFilter(_ context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, error) {
+	s.lastSchedulerScoreFilter.platform = platform
+	s.lastSchedulerScoreFilter.accountType = accountType
+	s.lastSchedulerScoreFilter.status = status
+	s.lastSchedulerScoreFilter.search = search
+	s.lastSchedulerScoreFilter.groupID = groupID
+	s.lastSchedulerScoreFilter.privacyMode = privacyMode
 	s.schedulerScoreFilterCalls++
+	if len(s.accountSchedulerScoreFilterSets) > 0 {
+		index := s.schedulerScoreFilterCalls - 1
+		if index >= len(s.accountSchedulerScoreFilterSets) {
+			index = len(s.accountSchedulerScoreFilterSets) - 1
+		}
+		return s.accountSchedulerScoreFilterSets[index], nil
+	}
 	if s.accountSchedulerScoreFilterAccounts != nil {
 		return s.accountSchedulerScoreFilterAccounts, nil
 	}
@@ -462,6 +487,17 @@ func (s *stubAdminService) DeleteAccount(ctx context.Context, id int64) error {
 	defer s.mu.Unlock()
 	s.deletedAccountIDs = append(s.deletedAccountIDs, id)
 	return s.deleteAccountErrors[id]
+}
+
+func (s *stubAdminService) DeleteForbiddenAccount(ctx context.Context, id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attemptedForbiddenAccountIDs = append(s.attemptedForbiddenAccountIDs, id)
+	if err := s.deleteForbiddenAccountErrors[id]; err != nil {
+		return err
+	}
+	s.deletedForbiddenAccountIDs = append(s.deletedForbiddenAccountIDs, id)
+	return nil
 }
 
 func (s *stubAdminService) RefreshAccountCredentials(ctx context.Context, id int64) (*service.Account, error) {

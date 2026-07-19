@@ -248,4 +248,28 @@ describe('useTableLoader', () => {
       await load()
     })
   })
+
+  describe('loaded parameter snapshot', () => {
+    it('updates only after the matching request succeeds', async () => {
+      let resolveLoad: (value: any) => void
+      const fetchFn = vi.fn(() => new Promise((resolve) => { resolveLoad = resolve }))
+      const { load, loadedParams, params } = useTableLoader({
+        fetchFn,
+        initialParams: { status: 'active' }
+      })
+
+      const firstLoad = load()
+      expect(loadedParams.value).toBeNull()
+      resolveLoad!({ items: [], total: 3, pages: 1 })
+      await firstLoad
+      expect(loadedParams.value).toEqual({ status: 'active' })
+
+      params.status = 'forbidden'
+      const pendingLoad = load()
+      expect(loadedParams.value).toEqual({ status: 'active' })
+      resolveLoad!({ items: [], total: 2, pages: 1 })
+      await pendingLoad
+      expect(loadedParams.value).toEqual({ status: 'forbidden' })
+    })
+  })
 })

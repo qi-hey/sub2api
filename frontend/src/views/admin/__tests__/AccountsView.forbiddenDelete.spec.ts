@@ -206,4 +206,41 @@ describe('admin AccountsView Forbidden bulk deletion', () => {
     )
     expect(showSuccess).not.toHaveBeenCalled()
   })
+
+  it('keeps the delete button hidden until the Forbidden request finishes', async () => {
+    let resolveForbidden: (value: any) => void
+    listAccounts.mockImplementation(async (_page, _pageSize, filters) => {
+      if (filters?.status === 'forbidden') {
+        return new Promise((resolve) => { resolveForbidden = resolve })
+      }
+      return { items: [{ id: 1 }], total: 88, page: 1, page_size: 20, pages: 5 }
+    })
+    const wrapper = mountAccountsView()
+    await flushPromises()
+
+    await wrapper.get('[data-test="apply-forbidden"]').trigger('click')
+    expect(wrapper.find('[data-test="delete-all-forbidden"]').exists()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(350)
+    await flushPromises()
+    expect(wrapper.find('[data-test="delete-all-forbidden"]').exists()).toBe(false)
+
+    resolveForbidden!({ items: [{ id: 2 }], total: 7, page: 1, page_size: 20, pages: 1 })
+    await flushPromises()
+    expect(wrapper.get('[data-test="delete-all-forbidden"]').text()).toContain('7')
+  })
+
+  it('does not report a successful deletion as failed when reloading fails', async () => {
+    const wrapper = mountAccountsView()
+    await applyForbiddenFilter(wrapper)
+    listAccounts.mockRejectedValueOnce(new Error('reload failed'))
+
+    await wrapper.get('[data-test="delete-all-forbidden"]').trigger('click')
+    await flushPromises()
+
+    expect(showSuccess).toHaveBeenCalled()
+    expect(showError).not.toHaveBeenCalledWith(
+      expect.stringContaining('admin.accounts.bulkActions.deleteAllForbiddenFailed')
+    )
+  })
 })

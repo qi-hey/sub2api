@@ -34,7 +34,7 @@ func TestAccountListForbiddenFilterUsesGrokUsageSnapshot(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 
 	normalized := normalizeSQLWhitespace(capturedSQL)
-	for _, fragment := range []string{"platform", "grok_usage_snapshot", "status_code"} {
+	for _, fragment := range []string{"platform", "grok_usage_snapshot", "status_code", "deleted_at"} {
 		require.Contains(t, strings.ToLower(normalized), fragment, "missing Forbidden filter fragment %q in SQL: %s", fragment, normalized)
 	}
 }

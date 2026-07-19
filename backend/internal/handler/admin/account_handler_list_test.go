@@ -51,7 +51,7 @@ func TestAccountHandlerBulkDeleteForbiddenRejectsChangedCount(t *testing.T) {
 
 	require.Equal(t, http.StatusConflict, rec.Code)
 	require.Empty(t, adminSvc.deletedAccountIDs)
-	require.Equal(t, service.AccountStatusForbiddenFilter, adminSvc.lastListAccounts.status)
+	require.Equal(t, service.AccountStatusForbiddenFilter, adminSvc.lastSchedulerScoreFilter.status)
 }
 
 func TestAccountHandlerBulkDeleteForbiddenDeletesEveryResolvedAccount(t *testing.T) {
@@ -72,13 +72,14 @@ func TestAccountHandlerBulkDeleteForbiddenDeletesEveryResolvedAccount(t *testing
 	require.Equal(t, 3, payload.Data.Success)
 	require.Zero(t, payload.Data.Failed)
 	require.Empty(t, payload.Data.FailedIDs)
-	require.ElementsMatch(t, []int64{21, 22, 23}, adminSvc.deletedAccountIDs)
+	require.ElementsMatch(t, []int64{21, 22, 23}, adminSvc.deletedForbiddenAccountIDs)
+	require.Empty(t, adminSvc.deletedAccountIDs)
 }
 
 func TestAccountHandlerBulkDeleteForbiddenReportsPartialFailures(t *testing.T) {
 	router, adminSvc := setupAccountListRouter()
 	adminSvc.accounts = []service.Account{{ID: 31}, {ID: 32}, {ID: 33}}
-	adminSvc.deleteAccountErrors = map[int64]error{32: errors.New("delete failed")}
+	adminSvc.deleteForbiddenAccountErrors = map[int64]error{32: errors.New("delete failed")}
 
 	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":3}`)
 
@@ -94,7 +95,105 @@ func TestAccountHandlerBulkDeleteForbiddenReportsPartialFailures(t *testing.T) {
 	require.Equal(t, 2, payload.Data.Success)
 	require.Equal(t, 1, payload.Data.Failed)
 	require.Equal(t, []int64{32}, payload.Data.FailedIDs)
-	require.ElementsMatch(t, []int64{31, 32, 33}, adminSvc.deletedAccountIDs)
+	require.ElementsMatch(t, []int64{31, 32, 33}, adminSvc.attemptedForbiddenAccountIDs)
+	require.ElementsMatch(t, []int64{31, 33}, adminSvc.deletedForbiddenAccountIDs)
+	require.Empty(t, adminSvc.deletedAccountIDs)
+}
+
+func TestAccountHandlerBulkDeleteForbiddenRejectsEqualCountChangedIDSet(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	adminSvc.accountSchedulerScoreFilterSets = [][]service.Account{
+		{{ID: 41}, {ID: 42}},
+		{{ID: 42}, {ID: 43}},
+	}
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":2}`)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	require.Equal(t, 2, adminSvc.schedulerScoreFilterCalls)
+	require.Empty(t, adminSvc.attemptedForbiddenAccountIDs)
+	require.Empty(t, adminSvc.deletedAccountIDs)
+}
+
+func TestAccountHandlerBulkDeleteForbiddenResolvesMoreThanOnePage(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	accounts := make([]service.Account, 501)
+	for i := range accounts {
+		accounts[i].ID = int64(i + 1)
+	}
+	adminSvc.accounts = accounts
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":501}`)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 2, adminSvc.schedulerScoreFilterCalls)
+	require.Len(t, adminSvc.deletedForbiddenAccountIDs, 501)
+	require.Empty(t, adminSvc.deletedAccountIDs)
+}
+
+func TestAccountHandlerBulkDeleteForbiddenAllowsMaximumCount(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	accounts := make([]service.Account, bulkDeleteForbiddenMaxCount)
+	for i := range accounts {
+		accounts[i].ID = int64(i + 1)
+	}
+	adminSvc.accounts = accounts
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":5000}`)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.deletedForbiddenAccountIDs, bulkDeleteForbiddenMaxCount)
+}
+
+func TestAccountHandlerBulkDeleteForbiddenReturnsConflictBeforeLimitForStaleCount(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	accounts := make([]service.Account, bulkDeleteForbiddenMaxCount+1)
+	for i := range accounts {
+		accounts[i].ID = int64(i + 1)
+	}
+	adminSvc.accounts = accounts
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":5000}`)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	require.Empty(t, adminSvc.attemptedForbiddenAccountIDs)
+}
+
+func TestAccountHandlerBulkDeleteForbiddenRejectsCountAboveMaximum(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	accounts := make([]service.Account, bulkDeleteForbiddenMaxCount+1)
+	for i := range accounts {
+		accounts[i].ID = int64(i + 1)
+	}
+	adminSvc.accounts = accounts
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":5001}`)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, adminSvc.attemptedForbiddenAccountIDs)
+}
+
+func TestAccountHandlerBulkDeleteForbiddenDoesNotDeleteRecoveredAccount(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	adminSvc.accounts = []service.Account{{ID: 51}}
+	adminSvc.deleteForbiddenAccountErrors = map[int64]error{51: errors.New("account is no longer forbidden")}
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":1}`)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data struct {
+			Success   int     `json:"success"`
+			Failed    int     `json:"failed"`
+			FailedIDs []int64 `json:"failed_ids"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Zero(t, payload.Data.Success)
+	require.Equal(t, 1, payload.Data.Failed)
+	require.Equal(t, []int64{51}, payload.Data.FailedIDs)
+	require.Empty(t, adminSvc.deletedForbiddenAccountIDs)
+	require.Empty(t, adminSvc.deletedAccountIDs)
 }
 
 func TestAccountHandlerListIncludesCreatedAt(t *testing.T) {

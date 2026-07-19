@@ -13,6 +13,7 @@ var (
 	ErrAccountNotFound      = infraerrors.NotFound("ACCOUNT_NOT_FOUND", "account not found")
 	ErrAccountNilInput      = infraerrors.BadRequest("ACCOUNT_NIL_INPUT", "account input cannot be nil")
 	ErrAccountNotInFallback = infraerrors.BadRequest("ACCOUNT_NOT_IN_FALLBACK", "account is not in proxy fallback state")
+	ErrAccountNotForbidden  = infraerrors.Conflict("ACCOUNT_NOT_FORBIDDEN", "account is no longer forbidden")
 )
 
 const AccountListGroupUngrouped int64 = -1
@@ -130,6 +131,10 @@ type AccountDuplicateRepository interface {
 	// CreateWithAccountGroups atomically persists an account, its exact group priorities,
 	// and the scheduler outbox event for the new routing snapshot.
 	CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error
+}
+
+type ForbiddenAccountDeleter interface {
+	DeleteForbidden(ctx context.Context, id int64) error
 }
 
 // AdminAccountRepository makes the account-duplication write capability an explicit

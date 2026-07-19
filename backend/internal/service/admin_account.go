@@ -1166,6 +1166,14 @@ func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (s *adminServiceImpl) DeleteForbiddenAccount(ctx context.Context, id int64) error {
+	deleter, ok := s.accountRepo.(ForbiddenAccountDeleter)
+	if !ok {
+		return fmt.Errorf("account repository does not support guarded Forbidden deletion")
+	}
+	return deleter.DeleteForbidden(ctx, id)
+}
+
 func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {

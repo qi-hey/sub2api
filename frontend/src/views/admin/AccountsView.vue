@@ -876,6 +876,7 @@ const syncAccountListDerivedParams = () => {
 const {
   items: accounts,
   loading,
+  loadedParams,
   params,
   pagination,
   load: baseLoad,
@@ -898,9 +899,13 @@ const {
   }
 })
 
-const forbiddenFilteredCount = computed(() =>
-  params.platform === 'grok' && params.status === 'forbidden' ? pagination.total : 0
-)
+const forbiddenFilterKeys = ['platform', 'type', 'status', 'group', 'search', 'privacy_mode'] as const
+const forbiddenFilteredCount = computed(() => {
+  const loaded = loadedParams.value
+  if (loading.value || !loaded || params.platform !== 'grok' || params.status !== 'forbidden') return 0
+  const matchesLoadedRequest = forbiddenFilterKeys.every((key) => loaded[key] === params[key])
+  return matchesLoadedRequest ? pagination.total : 0
+})
 
 const {
   selectedIds: selIds,
@@ -1469,6 +1474,7 @@ const handleBulkDeleteForbidden = async () => {
   if (!confirm(t('admin.accounts.bulkActions.deleteAllForbiddenConfirm', { count: expectedCount }))) return
 
   deletingForbidden.value = true
+  let reloadAfterDelete = false
   try {
     const result = await adminAPI.accounts.bulkDeleteForbidden({
       filters: {
@@ -1491,7 +1497,7 @@ const handleBulkDeleteForbidden = async () => {
       appStore.showSuccess(t('admin.accounts.bulkActions.deleteAllForbiddenSuccess', { count: result.success }))
     }
     clearSelection()
-    await reload()
+    reloadAfterDelete = true
   } catch (error: any) {
     if (error?.status === 409 || error?.response?.status === 409) {
       try {
@@ -1506,6 +1512,14 @@ const handleBulkDeleteForbidden = async () => {
     }
   } finally {
     deletingForbidden.value = false
+  }
+
+  if (reloadAfterDelete) {
+    try {
+      await reload()
+    } catch (reloadError) {
+      console.error('Failed to reload accounts after Forbidden deletion:', reloadError)
+    }
   }
 }
 const handleBulkResetStatus = async () => {

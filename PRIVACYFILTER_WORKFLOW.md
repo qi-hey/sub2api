@@ -190,16 +190,17 @@ The filtered view exposes a protected "delete all Forbidden" action so cleanup
 is not limited to the current 20-row page. This action must retain all of the
 following safeguards:
 
-- It is visible only while the Grok Forbidden filter is active and the server
-  reports at least one match.
+- It is visible only while the last successfully loaded request matches the
+  current Grok Forbidden filter and the server reports at least one match.
 - The UI sends the complete filter snapshot and the displayed total in one
   request. It never deletes accounts page by page.
 - The server accepts only `platform=grok` and `status=forbidden`, resolves the
-  filter again, and returns HTTP 409 without deleting anything if the live
-  count differs from the confirmed count.
+  complete ID set twice, and returns HTTP 409 without deleting anything if the
+  confirmed count or ID set changes.
 - At most 5,000 accounts can be deleted in one request. Deletion reuses the
   normal account cleanup path so group links, scheduled tests, and scheduler
-  cache entries are also removed.
+  cache entries are also removed. Each account is locked and rechecked as an
+  undeleted Grok 403 row in the deletion transaction before any cleanup occurs.
 - Partial failures are reported with success and failure counts. There is no
   scheduled or automatic Forbidden deletion; an administrator must confirm it
   in the UI.

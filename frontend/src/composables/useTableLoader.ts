@@ -26,6 +26,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
 
   const items = ref<T[]>([])
   const loading = ref(false)
+  const loadedParams = ref<P | null>(null)
   const params = reactive<P>({ ...(initialParams || {}) } as P)
   const pagination = reactive<PaginationState>({
     page: 1,
@@ -47,18 +48,21 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     const currentController = new AbortController()
     abortController = currentController
     loading.value = true
+    const requestParams = { ...(toRaw(params) as P) } as P
 
     try {
       const response = await fetchFn(
         pagination.page,
         pagination.page_size,
-        toRaw(params) as P,
+        requestParams,
         { signal: currentController.signal }
       )
 
+      if (abortController !== currentController) return
       items.value = response.items || []
       pagination.total = response.total || 0
       pagination.pages = response.pages || 0
+      loadedParams.value = requestParams
     } catch (error) {
       if (!isAbortError(error)) {
         console.error('Table load error:', error)
@@ -99,6 +103,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
   return {
     items,
     loading,
+    loadedParams,
     params,
     pagination,
     load,

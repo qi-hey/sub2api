@@ -302,6 +302,71 @@ func (s *AccountRepoSuite) TestDelete_WithGroupBindings() {
 	s.Require().Zero(count, "expected bindings to be removed")
 }
 
+func (s *AccountRepoSuite) TestDeleteForbiddenDeletesOnlyCurrentGrok403Account() {
+	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-forbidden-delete"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "grok-forbidden-delete",
+		Platform: service.PlatformGrok,
+		Extra: map[string]any{
+			"grok_usage_snapshot": map[string]any{"status_code": 403},
+		},
+	})
+	mustBindAccountToGroup(s.T(), s.client, account.ID, group.ID, 1)
+	cacheRecorder := &schedulerCacheRecorder{accounts: map[int64]*service.Account{account.ID: account}}
+	s.repo.schedulerCache = cacheRecorder
+
+	s.Require().NoError(s.repo.DeleteForbidden(s.ctx, account.ID))
+
+	_, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().Error(err)
+	count, err := s.client.AccountGroup.Query().Where(accountgroup.AccountIDEQ(account.ID)).Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Zero(count)
+	s.Require().Equal([]int64{account.ID}, cacheRecorder.deleteIDs)
+}
+
+func (s *AccountRepoSuite) TestDeleteForbiddenRejectsRecoveredAccount() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "grok-recovered-before-delete",
+		Platform: service.PlatformGrok,
+		Extra: map[string]any{
+			"grok_usage_snapshot": map[string]any{"status_code": 200},
+		},
+	})
+
+	err := s.repo.DeleteForbidden(s.ctx, account.ID)
+
+	s.Require().Equal(service.ErrAccountNotForbidden, err)
+	_, err = s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+}
+
+func (s *AccountRepoSuite) TestDeleteForbiddenRejectsSoftDeletedAccount() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "grok-forbidden-soft-deleted",
+		Platform: service.PlatformGrok,
+		Extra: map[string]any{
+			"grok_usage_snapshot": map[string]any{"status_code": 403},
+		},
+	})
+	_, err := s.client.Account.UpdateOneID(account.ID).SetDeletedAt(time.Now()).Save(s.ctx)
+	s.Require().NoError(err)
+
+	err = s.repo.DeleteForbidden(s.ctx, account.ID)
+
+	s.Require().Equal(service.ErrAccountNotForbidden, err)
+	var deletedAt sql.NullTime
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT deleted_at FROM accounts WHERE id = $1",
+		[]any{account.ID},
+		&deletedAt,
+	)
+	s.Require().NoError(err)
+	s.Require().True(deletedAt.Valid)
+}
+
 // --- List / ListWithFilters ---
 
 func (s *AccountRepoSuite) TestList() {
@@ -472,6 +537,16 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 						"grok_usage_snapshot": map[string]any{"status_code": 403},
 					},
 				})
+				softDeleted := mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "grok-forbidden-soft-deleted",
+					Platform: service.PlatformGrok,
+					Status:   service.StatusActive,
+					Extra: map[string]any{
+						"grok_usage_snapshot": map[string]any{"status_code": 403},
+					},
+				})
+				_, err := client.Account.UpdateOneID(softDeleted.ID).SetDeletedAt(time.Now()).Save(s.ctx)
+				s.Require().NoError(err)
 			},
 			status:    "forbidden",
 			wantCount: 1,

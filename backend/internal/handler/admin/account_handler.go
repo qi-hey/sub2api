@@ -684,7 +684,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 }
 
 const (
-	bulkDeleteForbiddenPageSize = 500
 	bulkDeleteForbiddenMaxCount = 5000
 	bulkDeleteForbiddenWorkers  = 4
 )
@@ -714,34 +713,36 @@ func (h *AccountHandler) resolveBulkDeleteForbiddenIDs(ctx context.Context, filt
 	if len(search) > 100 {
 		search = search[:100]
 	}
-	accountIDs := make([]int64, 0, bulkDeleteForbiddenPageSize)
-	for page := 1; ; page++ {
-		accounts, total, listErr := h.adminService.ListAccounts(
-			ctx,
-			page,
-			bulkDeleteForbiddenPageSize,
-			service.PlatformGrok,
-			strings.TrimSpace(filters.Type),
-			service.AccountStatusForbiddenFilter,
-			search,
-			groupID,
-			strings.TrimSpace(filters.PrivacyMode),
-			"id",
-			"asc",
-		)
-		if listErr != nil {
-			return nil, 0, listErr
-		}
-		if total > bulkDeleteForbiddenMaxCount {
-			return nil, total, nil
-		}
-		for _, account := range accounts {
-			accountIDs = append(accountIDs, account.ID)
-		}
-		if int64(len(accountIDs)) >= total || len(accounts) == 0 {
-			return accountIDs, total, nil
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(
+		ctx,
+		service.PlatformGrok,
+		strings.TrimSpace(filters.Type),
+		service.AccountStatusForbiddenFilter,
+		search,
+		groupID,
+		strings.TrimSpace(filters.PrivacyMode),
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	accountIDs := make([]int64, 0, len(accounts))
+	for _, account := range accounts {
+		accountIDs = append(accountIDs, account.ID)
+	}
+	sort.Slice(accountIDs, func(i, j int) bool { return accountIDs[i] < accountIDs[j] })
+	return accountIDs, int64(len(accountIDs)), nil
+}
+
+func equalAccountIDSets(left, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
 		}
 	}
+	return true
 }
 
 // BulkDeleteForbidden deletes every account matching the server-side Grok 403 filter.
@@ -767,10 +768,6 @@ func (h *AccountHandler) BulkDeleteForbidden(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if total > bulkDeleteForbiddenMaxCount {
-		response.BadRequest(c, fmt.Sprintf("forbidden delete is limited to %d accounts", bulkDeleteForbiddenMaxCount))
-		return
-	}
 	if total != *req.ExpectedCount {
 		response.ErrorWithDetails(
 			c,
@@ -784,6 +781,33 @@ func (h *AccountHandler) BulkDeleteForbidden(c *gin.Context) {
 		)
 		return
 	}
+	if total > bulkDeleteForbiddenMaxCount {
+		response.BadRequest(c, fmt.Sprintf("forbidden delete is limited to %d accounts", bulkDeleteForbiddenMaxCount))
+		return
+	}
+
+	confirmedAccountIDs, confirmedTotal, err := h.resolveBulkDeleteForbiddenIDs(c.Request.Context(), req.Filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if confirmedTotal != total || !equalAccountIDSets(accountIDs, confirmedAccountIDs) {
+		response.ErrorWithDetails(
+			c,
+			http.StatusConflict,
+			"forbidden account set changed; reload and confirm again",
+			"FORBIDDEN_SET_CHANGED",
+			map[string]string{
+				"expected_count": strconv.FormatInt(total, 10),
+				"current_count":  strconv.FormatInt(confirmedTotal, 10),
+			},
+		)
+		return
+	}
+	// The second read is the confirmed deletion snapshot. Accounts that recover
+	// after this point are rejected by the repository guard and reported as
+	// partial failures; newly Forbidden accounts remain for the next run.
+	accountIDs = confirmedAccountIDs
 
 	result := BulkDeleteForbiddenAccountsResult{
 		SuccessIDs: make([]int64, 0, len(accountIDs)),
@@ -803,7 +827,7 @@ func (h *AccountHandler) BulkDeleteForbidden(c *gin.Context) {
 		go func() {
 			defer wg.Done()
 			for accountID := range jobs {
-				deleteErr := h.adminService.DeleteAccount(c.Request.Context(), accountID)
+				deleteErr := h.adminService.DeleteForbiddenAccount(c.Request.Context(), accountID)
 				resultMu.Lock()
 				if deleteErr != nil {
 					result.Failed++
