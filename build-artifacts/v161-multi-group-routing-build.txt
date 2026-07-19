@@ -1,14 +1,14 @@
-version=0.1.161-custom-multigroup-r1
-source_commit=2186bdd9514961d5dca8db8c8c55a06e0dd72752
+version=0.1.161-custom-multigroup-r2
+source_commit=92b4f66ee48f2a051dfc90e1df423b8d47c94c98
 upstream_tag=v0.1.161
-artifact=build/sub2api-0.1.161-custom-multigroup-r1-linux-amd64
+artifact=build/sub2api-0.1.161-custom-multigroup-r2-linux-amd64
 target=linux/amd64
 go_version=go1.26.5
 build_tags=embed
 build_type=release
-built_at_utc=2026-07-19T15:22:29Z
-size_bytes=111149218
-sha256=3F733AD4763DEC99911707DA2EABF76BA9258C76136BB61B47CBA8B7F1FE735B
+built_at_utc=2026-07-19T16:00:28Z
+size_bytes=111153314
+sha256=857B05091D63DC320C5186D7EED8C9A4CE24BD7B2F3CAC299208AD4555F2310A
 frontend_file_count=171
 frontend_total_bytes=5463741
 frontend_index_sha256=33FEF408E98A617BB6A5005ACE4C74DDB6DA735535390075BC0BCE263DA90042
@@ -19,6 +19,7 @@ verification:
 - frontend tests: 176 files, 1236 tests passed
 - frontend production build: passed
 - backend affected-package tests: passed
+- Grok target-model scheduler regression tests: passed
 - routing capacity and unavailable-group tests: passed 100 consecutive runs
 - backend full test excluding the known timing-sensitive test: passed
 - backend full test: one pre-existing timing failure in
