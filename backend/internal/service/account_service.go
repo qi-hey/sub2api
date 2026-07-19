@@ -17,6 +17,7 @@ var (
 
 const AccountListGroupUngrouped int64 = -1
 const AccountPrivacyModeUnsetFilter = "__unset__"
+const AccountStatusForbiddenFilter = "forbidden"
 
 // OAuthRefreshPageOptions describes one bounded, cursor-stable scan of OAuth
 // accounts. Candidate platforms are supplied by TokenRefreshService's refresher

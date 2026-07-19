@@ -446,6 +446,40 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			},
 		},
 		{
+			name: "filter_by_status_forbidden_grok_snapshot",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "grok-forbidden",
+					Platform: service.PlatformGrok,
+					Status:   service.StatusActive,
+					Extra: map[string]any{
+						"grok_usage_snapshot": map[string]any{"status_code": 403},
+					},
+				})
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "grok-ok",
+					Platform: service.PlatformGrok,
+					Status:   service.StatusActive,
+					Extra: map[string]any{
+						"grok_usage_snapshot": map[string]any{"status_code": 200},
+					},
+				})
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:     "openai-forbidden-shaped",
+					Platform: service.PlatformOpenAI,
+					Status:   service.StatusActive,
+					Extra: map[string]any{
+						"grok_usage_snapshot": map[string]any{"status_code": 403},
+					},
+				})
+			},
+			status:    "forbidden",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("grok-forbidden", accounts[0].Name)
+			},
+		},
+		{
 			name: "filter_by_status_active_excludes_runtime_blocked_accounts",
 			setup: func(client *dbent.Client) {
 				mustCreateAccount(s.T(), client, &service.Account{Name: "active-normal", Status: service.StatusActive})

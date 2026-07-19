@@ -732,6 +732,17 @@ func (r *accountRepository) accountListFilteredQuery(platform, accountType, stat
 	}
 	if status != "" {
 		switch status {
+		case service.AccountStatusForbiddenFilter:
+			q = q.Where(
+				dbaccount.PlatformEQ(service.PlatformGrok),
+				dbpredicate.Account(func(s *entsql.Selector) {
+					s.Where(sqljson.ValueEQ(
+						dbaccount.FieldExtra,
+						403,
+						sqljson.Path("grok_usage_snapshot", "status_code"),
+					))
+				}),
+			)
 		case service.StatusActive:
 			q = q.Where(
 				dbaccount.StatusEQ(status),
