@@ -1,28 +1,30 @@
-version=0.1.161-custom-multigroup-r3
-source_commit=5f309999510b53e29340fbb544a8f362dc065894
+version=0.1.161-custom-multigroup-r4
+source_commit=d5156b35dd2438601d694d1d14e723f508831718
 upstream_tag=v0.1.161
-artifact=build/sub2api-0.1.161-custom-multigroup-r3-linux-amd64
+artifact=build/sub2api-0.1.161-custom-multigroup-r4-linux-amd64
 target=linux/amd64
 go_version=go1.26.5
 build_tags=embed
 build_type=release
-built_at_utc=2026-07-19T17:00:16Z
-size_bytes=111190178
-sha256=B415C3CFE2EB392FC6274CF47A6FD9B72D7D09C4626774A9F5A0C2A591EC6A05
+built_at_utc=2026-07-19T18:31:16Z
+size_bytes=111202466
+sha256=358FA678C13E8D9733849649885962B104F2EDE4280D3FE66561D90CB6BE410E
 frontend_file_count=170
-frontend_total_bytes=5491285
-frontend_index_sha256=431854CA15D03C425989D14EFB1CCE173D278907E0A68FB1061999AFF2BC6D4B
+frontend_total_bytes=5491630
+frontend_index_sha256=89EED40133673B54C131F29964CB85071B74B0D5EE52AFD565C8FD6F71BFA768
 
 verification:
 - frontend lint: passed
 - frontend typecheck: passed
-- frontend tests: 178 files, 1240 tests passed
+- frontend tests: 178 files, 1243 tests passed
 - frontend production build: passed
-- backend Forbidden repository and handler regression tests: passed
+- backend Forbidden handler and repository regression tests: passed
 - backend affected packages: handler/admin, repository, and server/routes passed
-- backend internal/service full test: one existing timing-sensitive failure in
-  TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig; it also
-  failed in isolation at its fixed one-second wait and is outside the Forbidden
-  account filter/delete path
+- backend full test suite: all packages passed except the existing timing-sensitive
+  TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig failure; it
+  also failed in isolation at its fixed one-second wait and is outside the
+  Forbidden account filter/delete path
+- repository integration tests: added for guarded delete and soft-delete
+  exclusion; local execution skipped because Docker is unavailable
 - Linux/amd64 embed build: passed
 - production deletion endpoint invoked during verification: no
