@@ -11,6 +11,8 @@ const {
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
+  createKey,
+  updateKey,
   showError,
   showSuccess,
   copyToClipboard,
@@ -22,6 +24,8 @@ const {
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
+  createKey: vi.fn(),
+  updateKey: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
   copyToClipboard: vi.fn(),
@@ -58,8 +62,8 @@ const messages: Record<string, string> = {
 vi.mock('@/api', () => ({
   keysAPI: {
     list: listKeys,
-    create: vi.fn(),
-    update: vi.fn(),
+    create: createKey,
+    update: updateKey,
     delete: vi.fn(),
     toggleStatus: vi.fn(),
   },
@@ -136,6 +140,12 @@ const createApiKey = (): ApiKey => ({
   reset_7d_at: null,
 })
 
+const availableGroups = [
+  { id: 2, name: 'Codex', description: '', platform: 'openai', status: 'active' },
+  { id: 11, name: 'Claude', description: '', platform: 'anthropic', status: 'active' },
+  { id: 12, name: 'Grok', description: '', platform: 'grok', status: 'active' },
+]
+
 const AppLayoutStub = {
   template: '<div><slot /></div>',
 }
@@ -173,16 +183,24 @@ const DataTableStub = {
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
         </div>
+        <slot name="cell-group" :value="row.group" :row="row" />
         <div
           v-if="columns.some((col) => col.key === 'last_used_ip')"
           data-test="last-used-ip"
         >
           <slot name="cell-last_used_ip" :value="row.last_used_ip" :row="row" />
         </div>
+        <slot name="cell-actions" :value="row" :row="row" />
       </div>
       <slot name="empty" />
     </div>
   `,
+}
+
+const BaseDialogStub = {
+  name: 'BaseDialog',
+  props: ['show'],
+  template: '<div v-if="show"><slot /><slot name="footer" /></div>',
 }
 
 const SelectStub = {
@@ -223,7 +241,7 @@ const mountView = async () => {
         TablePageLayout: TablePageLayoutStub,
         DataTable: DataTableStub,
         Pagination: PaginationStub,
-        BaseDialog: true,
+        BaseDialog: BaseDialogStub,
         ConfirmDialog: true,
         EmptyState: true,
         Select: SelectStub,
@@ -265,6 +283,8 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
+    createKey.mockReset()
+    updateKey.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     copyToClipboard.mockReset()
@@ -282,6 +302,8 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
+    createKey.mockResolvedValue(createApiKey())
+    updateKey.mockResolvedValue(createApiKey())
     isCurrentStep.mockReturnValue(false)
   })
 
@@ -437,5 +459,176 @@ describe('user KeysView column settings', () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+  })
+
+  it('creates an API key with sorted bound groups and an explicit default', async () => {
+    getAvailableGroups.mockResolvedValue(availableGroups)
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Create API Key').trigger('click')
+    await nextTick()
+    await wrapper.get('[data-tour="key-form-name"]').setValue('CC Switch')
+    await wrapper.get('[data-test="key-group-checkbox-12"]').setValue(true)
+    await wrapper.get('[data-test="key-group-checkbox-2"]').setValue(true)
+    await wrapper.get('[data-test="key-group-checkbox-11"]').setValue(true)
+    await wrapper.get('[data-test="key-default-group-2"]').setValue(true)
+    expect(wrapper.get('[data-test="key-default-group-2"]').attributes('aria-label')).toBe('keys.defaultGroupLabel: Codex')
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+
+    expect(createKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'CC Switch',
+        group_id: 2,
+        group_ids: [2, 11, 12],
+      })
+    )
+  })
+
+  it('does not create an API key without a bound group', async () => {
+    getAvailableGroups.mockResolvedValue(availableGroups)
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Create API Key').trigger('click')
+    await nextTick()
+    await wrapper.get('[data-tour="key-form-name"]').setValue('No group')
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+
+    expect(createKey).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('keys.groupRequired')
+  })
+
+  it('hydrates a legacy single-group key as one bound default group', async () => {
+    getAvailableGroups.mockResolvedValue(availableGroups)
+    listKeys.mockResolvedValueOnce({
+      items: [{
+        ...createApiKey(),
+        group_id: 2,
+        group: availableGroups[0],
+      } as ApiKey],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'common.edit').trigger('click')
+    await nextTick()
+
+    expect((wrapper.get('[data-test="key-group-checkbox-2"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="key-default-group-2"]').element as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('hydrates multi-group edit state and preserves unrelated key settings', async () => {
+    getAvailableGroups.mockResolvedValue(availableGroups)
+    listKeys.mockResolvedValueOnce({
+      items: [{
+        ...createApiKey(),
+        group_id: 2,
+        group_ids: [12, 2, 11],
+        groups: availableGroups,
+        group: availableGroups[0],
+        ip_whitelist: ['10.0.0.1'],
+        quota: 25,
+        expires_at: '2026-08-01T00:00:37.123Z',
+        rate_limit_5h: 1,
+        rate_limit_1d: 2,
+        rate_limit_7d: 3,
+      } as ApiKey],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'common.edit').trigger('click')
+    await nextTick()
+    expect((wrapper.get('[data-test="key-group-checkbox-2"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="key-group-checkbox-11"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="key-group-checkbox-12"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="key-default-group-2"]').element as HTMLInputElement).checked).toBe(true)
+
+    await wrapper.get('[data-test="key-group-checkbox-11"]').setValue(false)
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({
+      group_id: 2,
+      group_ids: [2, 12],
+      ip_whitelist: ['10.0.0.1'],
+      ip_blacklist: [],
+      quota: 25,
+      expires_at: '2026-08-01T00:00:37.123Z',
+      rate_limit_5h: 1,
+      rate_limit_1d: 2,
+      rate_limit_7d: 3,
+    }))
+  })
+
+  it('shows a historical unavailable binding so it can be removed', async () => {
+    getAvailableGroups.mockResolvedValue([availableGroups[0], availableGroups[2]])
+    const unavailableClaude = { ...availableGroups[1], status: 'disabled' }
+    listKeys.mockResolvedValueOnce({
+      items: [{
+        ...createApiKey(),
+        group_id: 2,
+        group_ids: [2, 11],
+        groups: [availableGroups[0], unavailableClaude],
+        group: availableGroups[0],
+      } as ApiKey],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'common.edit').trigger('click')
+    await nextTick()
+    const historicalBinding = wrapper.get('[data-test="key-group-checkbox-11"]')
+    expect((historicalBinding.element as HTMLInputElement).checked).toBe(true)
+
+    await historicalBinding.setValue(false)
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({
+      group_id: 2,
+      group_ids: [2],
+    }))
+  })
+
+  it('keeps existing bindings when changing the default group from the table', async () => {
+    getAvailableGroups.mockResolvedValue(availableGroups)
+    listKeys.mockResolvedValueOnce({
+      items: [{
+        ...createApiKey(),
+        group_id: 2,
+        group_ids: [2, 11, 12],
+        groups: availableGroups,
+        group: availableGroups[0],
+      } as ApiKey],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+
+    const groupButton = wrapper.findAll('button').find((button) => button.attributes('title') === 'keys.clickToChangeGroup')
+    expect(groupButton).toBeTruthy()
+    await groupButton!.trigger('click')
+    await nextTick()
+    const grokOption = wrapper.get('[data-test="group-default-option-12"]')
+    await grokOption.trigger('click')
+    await flushPromises()
+
+    expect(updateKey).toHaveBeenCalledWith(1, {
+      group_id: 12,
+      group_ids: [2, 11, 12],
+    })
   })
 })

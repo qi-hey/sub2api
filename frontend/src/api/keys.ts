@@ -47,53 +47,40 @@ export async function getById(id: number): Promise<ApiKey> {
 
 /**
  * Create new API key
- * @param name - Key name
- * @param groupId - Optional group ID
- * @param customKey - Optional custom key value
- * @param ipWhitelist - Optional IP whitelist
- * @param ipBlacklist - Optional IP blacklist
- * @param quota - Optional quota limit in USD (0 = unlimited)
- * @param expiresInDays - Optional days until expiry (undefined = never expires)
- * @param rateLimitData - Optional rate limit fields
+ * @param request - API key fields, including bound groups and the default group
  * @returns Created API key
  */
-export async function create(
-  name: string,
-  groupId?: number | null,
-  customKey?: string,
-  ipWhitelist?: string[],
-  ipBlacklist?: string[],
-  quota?: number,
-  expiresInDays?: number,
-  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number }
-): Promise<ApiKey> {
-  const payload: CreateApiKeyRequest = { name }
-  if (groupId !== undefined) {
-    payload.group_id = groupId
+export async function create(request: CreateApiKeyRequest): Promise<ApiKey> {
+  const payload: CreateApiKeyRequest = { name: request.name }
+  if (request.group_id !== undefined) {
+    payload.group_id = request.group_id
   }
-  if (customKey) {
-    payload.custom_key = customKey
+  if (request.group_ids !== undefined) {
+    payload.group_ids = [...new Set(request.group_ids)].sort((a, b) => a - b)
   }
-  if (ipWhitelist && ipWhitelist.length > 0) {
-    payload.ip_whitelist = ipWhitelist
+  if (request.custom_key) {
+    payload.custom_key = request.custom_key
   }
-  if (ipBlacklist && ipBlacklist.length > 0) {
-    payload.ip_blacklist = ipBlacklist
+  if (request.ip_whitelist && request.ip_whitelist.length > 0) {
+    payload.ip_whitelist = request.ip_whitelist
   }
-  if (quota !== undefined && quota > 0) {
-    payload.quota = quota
+  if (request.ip_blacklist && request.ip_blacklist.length > 0) {
+    payload.ip_blacklist = request.ip_blacklist
   }
-  if (expiresInDays !== undefined && expiresInDays > 0) {
-    payload.expires_in_days = expiresInDays
+  if (request.quota !== undefined && request.quota > 0) {
+    payload.quota = request.quota
   }
-  if (rateLimitData?.rate_limit_5h && rateLimitData.rate_limit_5h > 0) {
-    payload.rate_limit_5h = rateLimitData.rate_limit_5h
+  if (request.expires_in_days !== undefined && request.expires_in_days > 0) {
+    payload.expires_in_days = request.expires_in_days
   }
-  if (rateLimitData?.rate_limit_1d && rateLimitData.rate_limit_1d > 0) {
-    payload.rate_limit_1d = rateLimitData.rate_limit_1d
+  if (request.rate_limit_5h && request.rate_limit_5h > 0) {
+    payload.rate_limit_5h = request.rate_limit_5h
   }
-  if (rateLimitData?.rate_limit_7d && rateLimitData.rate_limit_7d > 0) {
-    payload.rate_limit_7d = rateLimitData.rate_limit_7d
+  if (request.rate_limit_1d && request.rate_limit_1d > 0) {
+    payload.rate_limit_1d = request.rate_limit_1d
+  }
+  if (request.rate_limit_7d && request.rate_limit_7d > 0) {
+    payload.rate_limit_7d = request.rate_limit_7d
   }
 
   const { data } = await apiClient.post<ApiKey>('/keys', payload)
@@ -107,7 +94,11 @@ export async function create(
  * @returns Updated API key
  */
 export async function update(id: number, updates: UpdateApiKeyRequest): Promise<ApiKey> {
-  const { data } = await apiClient.put<ApiKey>(`/keys/${id}`, updates)
+  const payload = { ...updates }
+  if (updates.group_ids !== undefined) {
+    payload.group_ids = [...new Set(updates.group_ids)].sort((a, b) => a - b)
+  }
+  const { data } = await apiClient.put<ApiKey>(`/keys/${id}`, payload)
   return data
 }
 
