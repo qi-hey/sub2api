@@ -3,6 +3,7 @@ package handler
 
 import (
 	"context"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,21 @@ type APIKeyHandler struct {
 	apiKeyService *service.APIKeyService
 }
 
+const apiKeyManagementMaxBodyBytes int64 = 1 << 20
+
+func bindAPIKeyManagementJSON(c *gin.Context, destination any) bool {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, apiKeyManagementMaxBodyBytes)
+	if err := c.ShouldBindJSON(destination); err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			response.Error(c, http.StatusRequestEntityTooLarge, buildBodyTooLargeMessage(maxErr.Limit))
+			return false
+		}
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return false
+	}
+	return true
+}
+
 // NewAPIKeyHandler creates a new APIKeyHandler
 func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 	return &APIKeyHandler{
@@ -31,7 +47,8 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
 	Name          string   `json:"name" binding:"required"`
-	GroupID       *int64   `json:"group_id"`        // nullable
+	GroupID       *int64   `json:"group_id"` // nullable
+	GroupIDs      []int64  `json:"group_ids"`
 	CustomKey     *string  `json:"custom_key"`      // 可选的自定义key
 	IPWhitelist   []string `json:"ip_whitelist"`    // IP 白名单
 	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
@@ -48,6 +65,7 @@ type CreateAPIKeyRequest struct {
 type UpdateAPIKeyRequest struct {
 	Name        string   `json:"name"`
 	GroupID     *int64   `json:"group_id"`
+	GroupIDs    []int64  `json:"group_ids"`
 	Status      string   `json:"status" binding:"omitempty,oneof=active inactive"`
 	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
@@ -148,14 +166,14 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	}
 
 	var req CreateAPIKeyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if !bindAPIKeyManagementJSON(c, &req) {
 		return
 	}
 
 	svcReq := service.CreateAPIKeyRequest{
 		Name:          req.Name,
 		GroupID:       req.GroupID,
+		GroupIDs:      req.GroupIDs,
 		CustomKey:     req.CustomKey,
 		IPWhitelist:   req.IPWhitelist,
 		IPBlacklist:   req.IPBlacklist,
@@ -199,12 +217,12 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 	}
 
 	var req UpdateAPIKeyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if !bindAPIKeyManagementJSON(c, &req) {
 		return
 	}
 
 	svcReq := service.UpdateAPIKeyRequest{
+		GroupIDs:            req.GroupIDs,
 		IPWhitelist:         req.IPWhitelist,
 		IPBlacklist:         req.IPBlacklist,
 		Quota:               req.Quota,

@@ -2,6 +2,7 @@
 package dto
 
 import (
+	"sort"
 	"strconv"
 	"time"
 
@@ -79,12 +80,45 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	if k == nil {
 		return nil
 	}
+	groupByID := make(map[int64]*service.Group, len(k.Groups)+1)
+	for i := range k.Groups {
+		group := k.Groups[i]
+		groupByID[group.ID] = &group
+	}
+	if k.Group != nil {
+		groupByID[k.Group.ID] = k.Group
+	}
+
+	groupIDSet := make(map[int64]struct{}, len(k.GroupIDs)+len(groupByID))
+	for _, groupID := range k.GroupIDs {
+		if groupID > 0 {
+			groupIDSet[groupID] = struct{}{}
+		}
+	}
+	for groupID := range groupByID {
+		if groupID > 0 {
+			groupIDSet[groupID] = struct{}{}
+		}
+	}
+	groupIDs := make([]int64, 0, len(groupIDSet))
+	for groupID := range groupIDSet {
+		groupIDs = append(groupIDs, groupID)
+	}
+	sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
+	groups := make([]Group, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if group := GroupFromServiceShallow(groupByID[groupID]); group != nil {
+			groups = append(groups, *group)
+		}
+	}
+
 	out := &APIKey{
 		ID:                 k.ID,
 		UserID:             k.UserID,
 		Key:                k.Key,
 		Name:               k.Name,
 		GroupID:            k.GroupID,
+		GroupIDs:           groupIDs,
 		Status:             k.Status,
 		IPWhitelist:        k.IPWhitelist,
 		IPBlacklist:        k.IPBlacklist,
@@ -107,6 +141,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Window7dStart:      k.Window7dStart,
 		User:               UserFromServiceShallow(k.User),
 		Group:              GroupFromServiceShallow(k.Group),
+		Groups:             groups,
 	}
 	if k.Window5hStart != nil && !service.IsWindowExpired(k.Window5hStart, service.RateLimitWindow5h) {
 		t := k.Window5hStart.Add(service.RateLimitWindow5h)

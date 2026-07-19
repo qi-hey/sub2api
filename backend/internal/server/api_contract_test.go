@@ -5,12 +5,14 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -230,6 +232,8 @@ func TestAPIContracts(t *testing.T) {
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
 					"group_id": null,
+					"group_ids": [],
+					"groups": [],
 					"status": "active",
 					"ip_whitelist": null,
 					"ip_blacklist": null,
@@ -281,6 +285,8 @@ func TestAPIContracts(t *testing.T) {
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
 							"group_id": null,
+							"group_ids": [],
+							"groups": [],
 							"status": "active",
 							"ip_whitelist": null,
 							"ip_blacklist": null,
@@ -1327,6 +1333,126 @@ func TestAPIContracts(t *testing.T) {
 	}
 }
 
+func TestAPIKeyMultiGroupContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deps := newContractDeps(t)
+	deps.groupRepo.SetActive([]service.Group{
+		{ID: 12, Name: "Grok", Platform: service.PlatformGrok, Status: service.StatusActive},
+		{ID: 2, Name: "Codex", Platform: service.PlatformOpenAI, Status: service.StatusActive},
+		{ID: 11, Name: "Claude", Platform: service.PlatformAnthropic, Status: service.StatusActive},
+	})
+
+	status, body := doRequest(
+		t,
+		deps.router,
+		http.MethodPost,
+		"/api/v1/keys",
+		`{"name":"CC Switch","custom_key":"sk_multi_group_123456","group_id":2,"group_ids":[12,2,11,12]}`,
+		map[string]string{"Content-Type": "application/json"},
+	)
+	require.Equal(t, http.StatusOK, status)
+
+	var responseBody struct {
+		Data struct {
+			GroupID  *int64  `json:"group_id"`
+			GroupIDs []int64 `json:"group_ids"`
+			Groups   []struct {
+				ID       int64  `json:"id"`
+				Name     string `json:"name"`
+				Platform string `json:"platform"`
+			} `json:"groups"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &responseBody))
+	require.NotNil(t, responseBody.Data.GroupID)
+	require.Equal(t, int64(2), *responseBody.Data.GroupID)
+	require.Equal(t, []int64{2, 11, 12}, responseBody.Data.GroupIDs)
+	require.Equal(t, []int64{2, 11, 12}, []int64{
+		responseBody.Data.Groups[0].ID,
+		responseBody.Data.Groups[1].ID,
+		responseBody.Data.Groups[2].ID,
+	})
+	require.Equal(t, []string{"Codex", "Claude", "Grok"}, []string{
+		responseBody.Data.Groups[0].Name,
+		responseBody.Data.Groups[1].Name,
+		responseBody.Data.Groups[2].Name,
+	})
+}
+
+func TestAPIKeyMultiGroupUpdateContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deps := newContractDeps(t)
+	groups := []service.Group{
+		{ID: 2, Name: "Codex", Platform: service.PlatformOpenAI, Status: service.StatusActive},
+		{ID: 11, Name: "Claude", Platform: service.PlatformAnthropic, Status: service.StatusActive},
+		{ID: 12, Name: "Grok", Platform: service.PlatformGrok, Status: service.StatusActive},
+	}
+	deps.groupRepo.SetActive(groups)
+	defaultID := int64(2)
+	deps.apiKeyRepo.MustSeed(&service.APIKey{
+		ID:       100,
+		UserID:   1,
+		Key:      "sk_multi_group_123456",
+		Name:     "CC Switch",
+		Status:   service.StatusActive,
+		GroupID:  &defaultID,
+		Group:    &groups[0],
+		GroupIDs: []int64{2, 11, 12},
+		Groups:   groups,
+	})
+
+	status, body := doRequest(
+		t,
+		deps.router,
+		http.MethodPut,
+		"/api/v1/keys/100",
+		`{"group_ids":[12,2,12]}`,
+		map[string]string{"Content-Type": "application/json"},
+	)
+	require.Equal(t, http.StatusOK, status)
+
+	var responseBody struct {
+		Data struct {
+			GroupID  *int64  `json:"group_id"`
+			GroupIDs []int64 `json:"group_ids"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &responseBody))
+	require.NotNil(t, responseBody.Data.GroupID)
+	require.Equal(t, int64(2), *responseBody.Data.GroupID)
+	require.Equal(t, []int64{2, 12}, responseBody.Data.GroupIDs)
+
+	status, _ = doRequest(
+		t,
+		deps.router,
+		http.MethodPut,
+		"/api/v1/keys/100",
+		`{"group_ids":[]}`,
+		map[string]string{"Content-Type": "application/json"},
+	)
+	require.Equal(t, http.StatusBadRequest, status)
+	persisted, err := deps.apiKeyRepo.GetByID(context.Background(), 100)
+	require.NoError(t, err)
+	require.Equal(t, []int64{2, 12}, persisted.GroupIDs)
+}
+
+func TestAPIKeyManagementBodyLimitContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deps := newContractDeps(t)
+	body := `{"name":"oversized","group_id":2,"group_ids":[` + strings.Repeat("2,", 600_000) + `2]}`
+
+	status, _ := doRequest(
+		t,
+		deps.router,
+		http.MethodPost,
+		"/api/v1/keys",
+		body,
+		map[string]string{"Content-Type": "application/json"},
+	)
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, status)
+}
+
 type contractDeps struct {
 	now         time.Time
 	router      http.Handler
@@ -1428,6 +1554,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Keys.Use(jwtAuth)
 	v1Keys.GET("/keys", apiKeyHandler.List)
 	v1Keys.POST("/keys", apiKeyHandler.Create)
+	v1Keys.PUT("/keys/:id", apiKeyHandler.Update)
 	v1Keys.GET("/groups/available", apiKeyHandler.GetAvailableGroups)
 
 	v1Usage := v1.Group("")
@@ -1669,7 +1796,13 @@ func (stubGroupRepo) Create(ctx context.Context, group *service.Group) error {
 	return errors.New("not implemented")
 }
 
-func (stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+func (r *stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+	for i := range r.active {
+		if r.active[i].ID == id {
+			group := r.active[i]
+			return &group, nil
+		}
+	}
 	return nil, service.ErrGroupNotFound
 }
 

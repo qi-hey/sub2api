@@ -26,6 +26,10 @@ var (
 	ErrAPIKeyNotFound       = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
 	ErrGroupNotAllowed      = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
 	ErrAPIKeyGroupNotBound  = infraerrors.BadRequest("API_KEY_GROUP_NOT_BOUND", "api key is not bound to the selected group")
+	ErrAPIKeyGroupsEmpty    = infraerrors.BadRequest("API_KEY_GROUPS_EMPTY", "api key group bindings cannot be empty")
+	ErrAPIKeyDefaultGroup   = infraerrors.BadRequest("API_KEY_DEFAULT_GROUP_INVALID", "default group must be included in api key group bindings")
+	ErrAPIKeyInvalidGroupID = infraerrors.BadRequest("API_KEY_GROUP_ID_INVALID", "api key group IDs must be positive")
+	ErrAPIKeyTooManyGroups  = infraerrors.BadRequest("API_KEY_GROUPS_LIMIT_EXCEEDED", "api key has too many group bindings")
 	ErrAPIKeyExists         = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
 	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
 	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
@@ -48,6 +52,7 @@ const (
 	defaultAuthLookupConcurrency = 64
 	defaultNegativeAuthCacheSize = 16384
 	apiKeyMaxErrorsPerHour       = 20
+	maxAPIKeyGroupBindings       = 1024
 	apiKeyLastUsedMinTouch       = 30 * time.Second
 	apiKeySortCurrentConcurrency = "current_concurrency"
 	// DB 写失败后的短退避，避免请求路径持续同步重试造成写风暴与高延迟。
@@ -182,6 +187,7 @@ type APIKeyAuthCacheInvalidator interface {
 type CreateAPIKeyRequest struct {
 	Name        string   `json:"name"`
 	GroupID     *int64   `json:"group_id"`
+	GroupIDs    []int64  `json:"group_ids"`
 	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
 	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
@@ -200,6 +206,7 @@ type CreateAPIKeyRequest struct {
 type UpdateAPIKeyRequest struct {
 	Name        *string  `json:"name"`
 	GroupID     *int64   `json:"group_id"`
+	GroupIDs    []int64  `json:"group_ids"`
 	Status      *string  `json:"status"`
 	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单（空数组清空）
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单（空数组清空）
@@ -398,6 +405,90 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
 
+func normalizeAPIKeyBindingIDs(groupIDs []int64) ([]int64, error) {
+	if len(groupIDs) == 0 {
+		return nil, ErrAPIKeyGroupsEmpty
+	}
+	if len(groupIDs) > maxAPIKeyGroupBindings {
+		return nil, ErrAPIKeyTooManyGroups
+	}
+
+	seen := make(map[int64]struct{}, len(groupIDs))
+	normalized := make([]int64, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			return nil, ErrAPIKeyInvalidGroupID
+		}
+		if _, exists := seen[groupID]; exists {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		normalized = append(normalized, groupID)
+	}
+	sort.Slice(normalized, func(i, j int) bool { return normalized[i] < normalized[j] })
+	return normalized, nil
+}
+
+func (s *APIKeyService) validateAPIKeyGroupBindings(
+	ctx context.Context,
+	user *User,
+	defaultGroupID *int64,
+	groupIDs []int64,
+	explicitBindings bool,
+) (*int64, *Group, []int64, []Group, error) {
+	if defaultGroupID == nil {
+		if explicitBindings {
+			return nil, nil, nil, nil, ErrAPIKeyDefaultGroup
+		}
+		return nil, nil, nil, nil, nil
+	}
+	if *defaultGroupID <= 0 {
+		return nil, nil, nil, nil, ErrAPIKeyInvalidGroupID
+	}
+
+	bindings := groupIDs
+	if !explicitBindings {
+		bindings = []int64{*defaultGroupID}
+	}
+	normalized, err := normalizeAPIKeyBindingIDs(bindings)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	defaultBound := false
+	for _, groupID := range normalized {
+		if groupID == *defaultGroupID {
+			defaultBound = true
+			break
+		}
+	}
+	if !defaultBound {
+		return nil, nil, nil, nil, ErrAPIKeyDefaultGroup
+	}
+
+	groups := make([]Group, 0, len(normalized))
+	var defaultGroup *Group
+	for _, groupID := range normalized {
+		group, err := s.groupRepo.GetByID(ctx, groupID)
+		if err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("get group %d: %w", groupID, err)
+		}
+		if !group.IsActive() || !s.canUserBindGroup(ctx, user, group) {
+			return nil, nil, nil, nil, ErrGroupNotAllowed
+		}
+
+		groupCopy := *group
+		groups = append(groups, groupCopy)
+		if groupID == *defaultGroupID {
+			defaultCopy := groupCopy
+			defaultGroup = &defaultCopy
+		}
+	}
+
+	defaultIDCopy := *defaultGroupID
+	return &defaultIDCopy, defaultGroup, normalized, groups, nil
+}
+
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
 	// 验证用户存在
@@ -420,17 +511,15 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 	}
 
-	// 验证分组权限（如果指定了分组）
-	if req.GroupID != nil {
-		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
-		if err != nil {
-			return nil, fmt.Errorf("get group: %w", err)
-		}
-
-		// 检查用户是否可以绑定该分组
-		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
-		}
+	groupID, group, groupIDs, groups, err := s.validateAPIKeyGroupBindings(
+		ctx,
+		user,
+		req.GroupID,
+		req.GroupIDs,
+		req.GroupIDs != nil,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	var key string
@@ -473,7 +562,10 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		UserID:      userID,
 		Key:         key,
 		Name:        html.EscapeString(req.Name),
-		GroupID:     req.GroupID,
+		GroupID:     groupID,
+		Group:       group,
+		GroupIDs:    groupIDs,
+		Groups:      groups,
 		Status:      StatusActive,
 		IPWhitelist: req.IPWhitelist,
 		IPBlacklist: req.IPBlacklist,
@@ -719,31 +811,43 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		}
 	}
 
-	// 更新字段
-	if req.Name != nil {
-		apiKey.Name = html.EscapeString(*req.Name)
-	}
-
-	if req.GroupID != nil {
-		// 验证分组权限
+	var validatedGroupID *int64
+	var validatedGroup *Group
+	var validatedGroupIDs []int64
+	var validatedGroups []Group
+	groupBindingsChanged := req.GroupID != nil || req.GroupIDs != nil
+	if groupBindingsChanged {
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil {
 			return nil, fmt.Errorf("get user: %w", err)
 		}
 
-		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
+		defaultGroupID := req.GroupID
+		if req.GroupIDs != nil && defaultGroupID == nil {
+			defaultGroupID = apiKey.GroupID
+		}
+		validatedGroupID, validatedGroup, validatedGroupIDs, validatedGroups, err = s.validateAPIKeyGroupBindings(
+			ctx,
+			user,
+			defaultGroupID,
+			req.GroupIDs,
+			req.GroupIDs != nil,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("get group: %w", err)
+			return nil, err
 		}
+	}
 
-		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
-		}
+	// 更新字段
+	if req.Name != nil {
+		apiKey.Name = html.EscapeString(*req.Name)
+	}
 
-		apiKey.GroupID = req.GroupID
-		apiKey.Group = group
-		apiKey.GroupIDs = []int64{group.ID}
-		apiKey.Groups = []Group{*group}
+	if groupBindingsChanged {
+		apiKey.GroupID = validatedGroupID
+		apiKey.Group = validatedGroup
+		apiKey.GroupIDs = validatedGroupIDs
+		apiKey.Groups = validatedGroups
 	}
 
 	if req.Status != nil {
