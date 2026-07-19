@@ -71,6 +71,107 @@ database credentials and Redis scheduler metadata (`sched:meta:<account_id>`)
 contain `model_mapping_fallbacks`. Cache refresh must not require a Sub2API
 restart.
 
+### Embedded request privacy filter
+
+The embedded privacy filter is a required downstream feature. It scans the
+OpenAI-compatible `messages` or `input` request content before forwarding and
+redacts detected secrets with the bundled gitleaks rules. Non-JSON bodies and
+payloads without supported content fields remain unchanged.
+
+Upgrade acceptance checklist:
+
+- The shared gateway, Responses, Chat Completions, and OpenAI gateway entry
+  points still invoke `RedactPrivacyRequestBody` before upstream forwarding.
+- The embedded `privacy_filter_rules/gitleaks.toml` remains in the backend
+  binary; deployment does not depend on a separate rules file.
+- Privacy-filter unit tests and gateway integration tests pass.
+
+### Any Router Codex passthrough and account tests
+
+The `accounts.extra.openai_passthrough` setting and its create, edit, and bulk
+edit controls are required downstream behavior. For pool-mode API-key accounts
+under `anyrouter.top`, requests mapped to `gpt-5.5` retain the Codex-compatible
+request shape, headers, encrypted-reasoning include, prompt cache key, and
+unsupported-field cleanup.
+
+When a client sends a non-streaming request through this Any Router path, the
+upstream request is forced to stream and Sub2API bridges the result back to the
+client's requested response mode. Recognized invalid-Codex, capacity, and
+transient processing errors remain eligible for pool failover. The account test
+endpoint must use the same request shape and headers as live traffic.
+
+Upgrade acceptance checklist:
+
+- The frontend round-trips `extra.openai_passthrough` without relying on the
+  legacy `openai_oauth_passthrough` field.
+- Streaming and non-streaming Any Router passthrough tests pass.
+- Any Router account tests exercise the Codex-compatible payload instead of a
+  generic OpenAI payload.
+- Accounts not under `anyrouter.top`, non-pool accounts, and models other than
+  the exact configured target keep their upstream behavior.
+
+### Compatible default groups for new accounts
+
+In standard mode, the Create Account modal preselects every active group whose
+platform matches the selected account platform. Antigravity mixed scheduling
+also includes its compatible Anthropic and Gemini groups. Group IDs always come
+from live group data and are never hardcoded.
+
+Changing platform refreshes untouched defaults. Manual selection or deselection
+is preserved while the group list refreshes. Simple mode continues to omit
+explicit group bindings.
+
+### API key multi-group routing
+
+API keys can bind multiple groups through the additive `api_key_groups` table
+while `api_keys.group_id` remains the default and legacy-compatible group.
+Create and update payloads accept both `group_id` and `group_ids`; omitted
+`group_ids` keeps single-group behavior, while an explicit empty list or a
+default group outside the bindings is rejected atomically.
+
+One request-local group is selected before authorization, subscription checks,
+billing, scheduler selection, sticky sessions, security checks, and usage
+logging. The cached API key object is not mutated. Explicit aliases take
+precedence over family routing:
+
+```text
+gpt-5.4          -> Grok
+claude-opus-4-8 -> Grok
+grok-*           -> Grok
+other gpt-*      -> OpenAI/Codex
+other claude-*   -> Anthropic/Claude
+unknown models   -> default group
+```
+
+The key management UI exposes multi-select bindings plus one selected default.
+Existing keys hydrate their legacy `group_id` as a one-item binding. ACL,
+quota, rate-limit, expiration, and usage fields must not change when bindings
+are edited.
+
+### Grok new-account defaults
+
+New Grok accounts default to these mappings:
+
+```text
+claude-opus-4-8 -> grok-4.5
+gpt-5.4         -> grok-4.5
+```
+
+The frontend selects all compatible Grok groups from live data and submits both
+the mappings and selected group IDs. Both backend account-creation services add
+the mappings when callers omit `credentials.model_mapping`; explicit caller
+configuration always wins. Existing accounts and edit operations are not
+modified.
+
+Upgrade acceptance checklist:
+
+- Multi-group migration, repository, service, middleware, handler contract, and
+  frontend key-management tests pass.
+- Exact alias and family routing tests verify the selected group without
+  cross-group failover.
+- Grok create tests verify frontend payloads and both backend creation paths.
+- Existing single-group API keys retain their original behavior.
+
 Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.
