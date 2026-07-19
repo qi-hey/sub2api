@@ -19,11 +19,12 @@ import (
 )
 
 const (
-	apiKeyRoutingBodyMemoryBytes = 64 << 10
-	apiKeyRoutingJSONBufferBytes = 32 << 10
-	apiKeyRoutingStringMaxBytes  = 4 << 10
-	apiKeyRoutingJSONMaxDepth    = 256
-	apiKeyRoutingMaxActiveScans  = 64
+	apiKeyRoutingBodyMemoryBytes       = 64 << 10
+	apiKeyRoutingJSONBufferBytes       = 32 << 10
+	apiKeyRoutingStringMaxBytes        = 4 << 10
+	apiKeyRoutingJSONMaxDepth          = 256
+	apiKeyRoutingMaxActiveScans        = 64
+	apiKeyRoutingMaxActiveScansPerUser = 4
 	// One default 256 MiB gateway body plus MaxBytesReader's over-read margin.
 	apiKeyRoutingSpoolBudgetBytes = 257 << 20
 	apiKeyRoutingReplayContextKey = "api_key_routing_body_replay"
@@ -38,6 +39,8 @@ var (
 	)
 	apiKeyRoutingScanSlots        = make(chan struct{}, apiKeyRoutingMaxActiveScans)
 	apiKeyRoutingActiveSpoolBytes atomic.Int64
+	apiKeyRoutingScanUsersMu      sync.Mutex
+	apiKeyRoutingActiveUserScans  = make(map[int64]int)
 )
 
 func resolveAPIKeyRequestGroup(c *gin.Context, apiKey *service.APIKey) (*service.APIKey, error) {
@@ -47,7 +50,7 @@ func resolveAPIKeyRequestGroup(c *gin.Context, apiKey *service.APIKey) (*service
 	if !apiKeyHasGroupBindings(apiKey) {
 		return apiKey, nil
 	}
-	model, modelErr := requestModelForAPIKeyRoutingWithError(c.Request)
+	model, modelErr := requestModelForAPIKeyRoutingWithError(c.Request, apiKey.User.ID)
 	if replay, ok := c.Request.Body.(*replayedRequestBody); ok {
 		c.Set(apiKeyRoutingReplayContextKey, replay)
 	}
@@ -75,7 +78,28 @@ func resolveAPIKeyRequestPlatformOrUnavailableDefault(apiKey *service.APIKey, pl
 	if unavailableDefaultGroupMatchesPlatform(apiKey, platform) {
 		return apiKey, nil
 	}
+	if unavailableGroup, ok := uniqueUnavailableBoundGroupForPlatform(apiKey, platform); ok {
+		return apiKey.WithSelectedGroup(unavailableGroup.ID)
+	}
 	return nil, err
+}
+
+func uniqueUnavailableBoundGroupForPlatform(apiKey *service.APIKey, platform string) (*service.Group, bool) {
+	if apiKey == nil || strings.TrimSpace(platform) == "" {
+		return nil, false
+	}
+	var match *service.Group
+	for i := range apiKey.Groups {
+		group := &apiKey.Groups[i]
+		if group.ID <= 0 || group.IsActive() || !strings.EqualFold(group.Platform, strings.TrimSpace(platform)) {
+			continue
+		}
+		if match != nil {
+			return nil, false
+		}
+		match = group
+	}
+	return match, match != nil
 }
 
 func unavailableDefaultGroupMatchesPlatform(apiKey *service.APIKey, platform string) bool {
@@ -96,23 +120,22 @@ func apiKeyHasGroupBindings(apiKey *service.APIKey) bool {
 }
 
 func requestModelForAPIKeyRouting(req *http.Request) string {
-	model, _ := requestModelForAPIKeyRoutingWithError(req)
+	model, _ := requestModelForAPIKeyRoutingWithError(req, 0)
 	return model
 }
 
-func requestModelForAPIKeyRoutingWithError(req *http.Request) (string, error) {
+func requestModelForAPIKeyRoutingWithError(req *http.Request, userID int64) (string, error) {
 	if req == nil || req.Body == nil || !requestMethodCanCarryModel(req.Method) || !requestContentTypeCanCarryJSON(req.Header.Get("Content-Type")) {
 		return "", nil
 	}
-	select {
-	case apiKeyRoutingScanSlots <- struct{}{}:
-	default:
+	releaseSlot, acquired := tryAcquireAPIKeyRoutingScanSlot(userID)
+	if !acquired {
 		return "", errAPIKeyGroupRoutingBusy
 	}
-	releaseScanSlot := true
+	releaseOnReturn := true
 	defer func() {
-		if releaseScanSlot {
-			<-apiKeyRoutingScanSlots
+		if releaseOnReturn {
+			releaseSlot()
 		}
 	}()
 
@@ -122,8 +145,8 @@ func requestModelForAPIKeyRoutingWithError(req *http.Request) (string, error) {
 	replay := captured.replay(original)
 	req.Body = replay
 	if replay.tempFile != nil {
-		replay.releaseScanSlot = func() { <-apiKeyRoutingScanSlots }
-		releaseScanSlot = false
+		replay.releaseScanSlot = releaseSlot
+		releaseOnReturn = false
 	}
 	if captured.writeErr != nil {
 		return "", errAPIKeyGroupRoutingBusy
@@ -132,6 +155,42 @@ func requestModelForAPIKeyRoutingWithError(req *http.Request) (string, error) {
 		return "", nil
 	}
 	return model, nil
+}
+
+func tryAcquireAPIKeyRoutingScanSlot(userID int64) (func(), bool) {
+	apiKeyRoutingScanUsersMu.Lock()
+	if apiKeyRoutingActiveUserScans[userID] >= apiKeyRoutingMaxActiveScansPerUser {
+		apiKeyRoutingScanUsersMu.Unlock()
+		return nil, false
+	}
+	apiKeyRoutingActiveUserScans[userID]++
+	apiKeyRoutingScanUsersMu.Unlock()
+
+	select {
+	case apiKeyRoutingScanSlots <- struct{}{}:
+	default:
+		releaseAPIKeyRoutingUserScan(userID)
+		return nil, false
+	}
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			<-apiKeyRoutingScanSlots
+			releaseAPIKeyRoutingUserScan(userID)
+		})
+	}, true
+}
+
+func releaseAPIKeyRoutingUserScan(userID int64) {
+	apiKeyRoutingScanUsersMu.Lock()
+	defer apiKeyRoutingScanUsersMu.Unlock()
+	active := apiKeyRoutingActiveUserScans[userID]
+	if active <= 1 {
+		delete(apiKeyRoutingActiveUserScans, userID)
+		return
+	}
+	apiKeyRoutingActiveUserScans[userID] = active - 1
 }
 
 func scanTopLevelRequestModel(source io.Reader) (string, error) {

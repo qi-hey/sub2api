@@ -277,6 +277,58 @@ func TestAPIKeyAuthGroupRoutingPreservesUnavailableDefaultContract(t *testing.T)
 	require.Contains(t, rec.Body.String(), "GROUP_DISABLED")
 }
 
+func TestAPIKeyAuthGroupRoutingPreservesUnavailableNonDefaultContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	source := routableAPIKeyForMiddlewareTest()
+	source.Groups[2].Status = service.StatusDisabled
+	repo := fakeAPIKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		return source, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	apiKeyService := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.POST("/v1/responses", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4"}`))
+	req.Header.Set("x-api-key", source.Key)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "GROUP_DISABLED")
+}
+
+func TestAPIKeyAuthGroupRoutingDoesNotChooseBetweenUnavailableNonDefaultGroups(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	source := routableAPIKeyForMiddlewareTest()
+	source.Groups[2].Status = service.StatusDisabled
+	source.GroupIDs = append(source.GroupIDs, 13)
+	source.Groups = append(source.Groups, service.Group{
+		ID:       13,
+		Name:     "Grok disabled 2",
+		Platform: service.PlatformGrok,
+		Status:   service.StatusDisabled,
+		Hydrated: true,
+	})
+	repo := fakeAPIKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		return source, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	apiKeyService := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.POST("/v1/responses", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4"}`))
+	req.Header.Set("x-api-key", source.Key)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "API_KEY_GROUP_NOT_BOUND")
+}
+
 func TestGoogleAPIKeyAuthGroupRoutingErrorUsesGoogleContract(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	source := routableAPIKeyForMiddlewareTest()
@@ -415,7 +467,7 @@ func TestRequestModelForAPIKeyRoutingRejectsWhenSpoolBudgetIsFull(t *testing.T) 
 	previous := apiKeyRoutingActiveSpoolBytes.Swap(apiKeyRoutingSpoolBudgetBytes)
 	t.Cleanup(func() { apiKeyRoutingActiveSpoolBytes.Store(previous) })
 
-	model, err := requestModelForAPIKeyRoutingWithError(req)
+	model, err := requestModelForAPIKeyRoutingWithError(req, 7)
 
 	require.Empty(t, model)
 	require.Equal(t, http.StatusServiceUnavailable, infraerrors.Code(err))
@@ -423,6 +475,50 @@ func TestRequestModelForAPIKeyRoutingRejectsWhenSpoolBudgetIsFull(t *testing.T) 
 	restored, readErr := io.ReadAll(req.Body)
 	require.NoError(t, readErr)
 	require.Equal(t, body, string(restored))
+}
+
+func TestAPIKeyRoutingScanCapacityIsolatedByUser(t *testing.T) {
+	releases := make([]func(), 0, apiKeyRoutingMaxActiveScansPerUser)
+	for range apiKeyRoutingMaxActiveScansPerUser {
+		release, acquired := tryAcquireAPIKeyRoutingScanSlot(7)
+		require.True(t, acquired)
+		releases = append(releases, release)
+	}
+	t.Cleanup(func() {
+		for _, release := range releases {
+			release()
+		}
+	})
+
+	_, acquired := tryAcquireAPIKeyRoutingScanSlot(7)
+	require.False(t, acquired, "one user must not exceed its scan allocation")
+
+	releaseOther, acquired := tryAcquireAPIKeyRoutingScanSlot(8)
+	require.True(t, acquired, "one user's slow uploads must not consume another user's allocation")
+	releaseOther()
+
+	releases[0]()
+	releaseAgain, acquired := tryAcquireAPIKeyRoutingScanSlot(7)
+	require.True(t, acquired, "released capacity must be reusable by the same user")
+	releaseAgain()
+}
+
+func TestAPIKeyRoutingGlobalScanCapacityStillBounded(t *testing.T) {
+	releases := make([]func(), 0, apiKeyRoutingMaxActiveScans)
+	for i := range apiKeyRoutingMaxActiveScans {
+		userID := int64(i/apiKeyRoutingMaxActiveScansPerUser + 1)
+		release, acquired := tryAcquireAPIKeyRoutingScanSlot(userID)
+		require.True(t, acquired)
+		releases = append(releases, release)
+	}
+	t.Cleanup(func() {
+		for _, release := range releases {
+			release()
+		}
+	})
+
+	_, acquired := tryAcquireAPIKeyRoutingScanSlot(1000)
+	require.False(t, acquired, "the process-wide scan limit must remain enforced")
 }
 
 func routableAPIKeyForMiddlewareTest() *service.APIKey {
