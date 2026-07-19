@@ -183,6 +183,24 @@ func TestResolveAPIKeyRequestGroupUnboundErrorContract(t *testing.T) {
 	require.Equal(t, "API_KEY_GROUP_NOT_BOUND", infraerrors.Reason(err))
 }
 
+func TestResolveAPIKeyRequestPlatformUsesBoundPlatform(t *testing.T) {
+	key := testMultiGroupRoutingAPIKey()
+
+	selected, err := ResolveAPIKeyRequestPlatform(key, PlatformAnthropic)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(11), *selected.GroupID)
+	require.Equal(t, PlatformAnthropic, selected.Group.Platform)
+	require.Equal(t, int64(2), *key.GroupID)
+}
+
+func TestResolveAPIKeyRequestPlatformRejectsUnboundPlatform(t *testing.T) {
+	selected, err := ResolveAPIKeyRequestPlatform(testMultiGroupRoutingAPIKey(), PlatformGemini)
+
+	require.Nil(t, selected)
+	require.ErrorIs(t, err, ErrAPIKeyGroupNotBound)
+}
+
 func testMultiGroupRoutingAPIKey() *APIKey {
 	defaultID := int64(2)
 	return &APIKey{

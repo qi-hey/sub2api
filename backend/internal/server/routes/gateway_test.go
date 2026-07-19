@@ -256,3 +256,95 @@ func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
 	router.ServeHTTP(w, req)
 	require.NotEqual(t, http.StatusNotFound, w.Code)
 }
+
+func TestGatewayRoutesDispatchSelectedMultiGroupModels(t *testing.T) {
+	defaultID := int64(2)
+	key := &service.APIKey{
+		GroupID: &defaultID,
+		Group:   &service.Group{ID: 2, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+		Groups: []service.Group{
+			{ID: 2, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+			{ID: 11, Platform: service.PlatformAnthropic, Status: service.StatusActive},
+			{ID: 12, Platform: service.PlatformGrok, Status: service.StatusActive},
+		},
+	}
+	tests := []struct {
+		model     string
+		wantRoute string
+	}{
+		{model: "gpt-5.4", wantRoute: "openai-compatible"},
+		{model: "claude-opus-4-8", wantRoute: "openai-compatible"},
+		{model: "gpt-5.5", wantRoute: "openai-compatible"},
+		{model: "claude-fable-5", wantRoute: "anthropic-native"},
+	}
+
+	for _, endpoint := range []string{"/v1/responses", "/v1/messages"} {
+		for _, tt := range tests {
+			t.Run(endpoint+"/"+tt.model, func(t *testing.T) {
+				selected, err := service.ResolveAPIKeyRequestGroup(key, tt.model)
+				require.NoError(t, err)
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Set(string(servermiddleware.ContextKeyAPIKey), selected)
+				gotRoute := ""
+
+				dispatchOpenAIResponsesCompatibleGateway(
+					c,
+					func(*gin.Context) { gotRoute = "openai-compatible" },
+					func(*gin.Context) { gotRoute = "anthropic-native" },
+				)
+
+				require.Equal(t, tt.wantRoute, gotRoute)
+			})
+		}
+	}
+}
+
+func TestGatewayRoutesForceGrokBeforeVideoAuthentication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	probeAuth := servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+		platform, ok := servermiddleware.GetForcePlatformFromContext(c)
+		if !ok || platform != service.PlatformGrok {
+			c.Status(http.StatusConflict)
+			c.Abort()
+			return
+		}
+		c.Status(http.StatusNoContent)
+		c.Abort()
+	})
+	RegisterGatewayRoutes(
+		router,
+		&handler.Handlers{
+			Gateway:       &handler.GatewayHandler{},
+			OpenAIGateway: &handler.OpenAIGatewayHandler{},
+			AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
+		},
+		probeAuth,
+		nil,
+		nil,
+		nil,
+		nil,
+		&config.Config{},
+	)
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/v1/videos/generations"},
+		{method: http.MethodGet, path: "/v1/videos/request-123"},
+		{method: http.MethodGet, path: "/v1/videos/request-123/content"},
+		{method: http.MethodPost, path: "/videos/generations"},
+		{method: http.MethodGet, path: "/videos/request-123"},
+		{method: http.MethodGet, path: "/videos/request-123/content"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"model":"grok-imagine-video"}`))
+			rec := httptest.NewRecorder()
+
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusNoContent, rec.Code)
+		})
+	}
+}

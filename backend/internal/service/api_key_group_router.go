@@ -19,6 +19,22 @@ var ErrAPIKeyGroupConflict = infraerrors.InternalServer(
 // ResolveAPIKeyRequestGroup selects an active bound group for one request.
 // The returned API key is request-local; the authenticated source is unchanged.
 func ResolveAPIKeyRequestGroup(apiKey *APIKey, model string) (*APIKey, error) {
+	return resolveAPIKeyRequestPlatform(apiKey, APIKeyRequestPlatformForModel(model))
+}
+
+// APIKeyRequestPlatformForModel returns the routing platform implied by a model.
+// An empty result means the API key's default group should be used.
+func APIKeyRequestPlatformForModel(model string) string {
+	return requestedAPIKeyPlatform(model)
+}
+
+// ResolveAPIKeyRequestPlatform selects an active bound group for an endpoint
+// whose platform is authoritative regardless of a request model.
+func ResolveAPIKeyRequestPlatform(apiKey *APIKey, platform string) (*APIKey, error) {
+	return resolveAPIKeyRequestPlatform(apiKey, strings.ToLower(strings.TrimSpace(platform)))
+}
+
+func resolveAPIKeyRequestPlatform(apiKey *APIKey, platform string) (*APIKey, error) {
 	if apiKey == nil {
 		return nil, ErrAPIKeyGroupNotBound
 	}
@@ -27,7 +43,6 @@ func ResolveAPIKeyRequestGroup(apiKey *APIKey, model string) (*APIKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	platform := requestedAPIKeyPlatform(model)
 	if platform == "" {
 		return selectDefaultAPIKeyGroup(apiKey, groups)
 	}
