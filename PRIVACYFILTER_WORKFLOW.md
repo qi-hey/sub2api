@@ -179,6 +179,41 @@ Upgrade acceptance checklist:
   direct `grok-4.5` scheduler eligibility.
 - Existing single-group API keys retain their original behavior.
 
+### Grok Forbidden account maintenance
+
+The account status filter includes a downstream-only `forbidden` value for
+Grok accounts. It does not query `accounts.status`; it matches accounts whose
+`extra.grok_usage_snapshot.status_code` is `403`. Selecting this filter in the
+admin UI automatically selects the Grok platform.
+
+The filtered view exposes a protected "delete all Forbidden" action so cleanup
+is not limited to the current 20-row page. This action must retain all of the
+following safeguards:
+
+- It is visible only while the Grok Forbidden filter is active and the server
+  reports at least one match.
+- The UI sends the complete filter snapshot and the displayed total in one
+  request. It never deletes accounts page by page.
+- The server accepts only `platform=grok` and `status=forbidden`, resolves the
+  filter again, and returns HTTP 409 without deleting anything if the live
+  count differs from the confirmed count.
+- At most 5,000 accounts can be deleted in one request. Deletion reuses the
+  normal account cleanup path so group links, scheduled tests, and scheduler
+  cache entries are also removed.
+- Partial failures are reported with success and failure counts. There is no
+  scheduled or automatic Forbidden deletion; an administrator must confirm it
+  in the UI.
+
+Upgrade acceptance checklist:
+
+- A Grok account with a 403 usage snapshot appears in the Forbidden filter
+  even when its primary account status remains `active`.
+- Non-Grok accounts and Grok accounts without a 403 usage snapshot do not
+  appear in this filter.
+- Success, count-change (HTTP 409), and partial-failure frontend tests pass.
+- Deployment verification remains read-only and never invokes the production
+  deletion endpoint.
+
 Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.

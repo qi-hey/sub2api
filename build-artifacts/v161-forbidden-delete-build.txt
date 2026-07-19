@@ -1,0 +1,28 @@
+version=0.1.161-custom-multigroup-r3
+source_commit=5f309999510b53e29340fbb544a8f362dc065894
+upstream_tag=v0.1.161
+artifact=build/sub2api-0.1.161-custom-multigroup-r3-linux-amd64
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+built_at_utc=2026-07-19T17:00:16Z
+size_bytes=111190178
+sha256=B415C3CFE2EB392FC6274CF47A6FD9B72D7D09C4626774A9F5A0C2A591EC6A05
+frontend_file_count=170
+frontend_total_bytes=5491285
+frontend_index_sha256=431854CA15D03C425989D14EFB1CCE173D278907E0A68FB1061999AFF2BC6D4B
+
+verification:
+- frontend lint: passed
+- frontend typecheck: passed
+- frontend tests: 178 files, 1240 tests passed
+- frontend production build: passed
+- backend Forbidden repository and handler regression tests: passed
+- backend affected packages: handler/admin, repository, and server/routes passed
+- backend internal/service full test: one existing timing-sensitive failure in
+  TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig; it also
+  failed in isolation at its fixed one-second wait and is outside the Forbidden
+  account filter/delete path
+- Linux/amd64 embed build: passed
+- production deletion endpoint invoked during verification: no
