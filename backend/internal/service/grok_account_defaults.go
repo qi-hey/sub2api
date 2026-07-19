@@ -5,6 +5,7 @@ import "maps"
 var defaultGrokCreateModelMapping = map[string]any{
 	"claude-opus-4-8": "grok-4.5",
 	"gpt-5.4":         "grok-4.5",
+	"grok-4.5":        "grok-4.5",
 }
 
 func ApplyGrokCreateDefaults(credentials map[string]any) map[string]any {

@@ -150,12 +150,18 @@ are edited.
 
 ### Grok new-account defaults
 
-New Grok accounts default to these mappings:
+New Grok accounts allow `grok-4.5` directly and default to these compatibility
+mappings:
 
 ```text
+grok-4.5        -> grok-4.5
 claude-opus-4-8 -> grok-4.5
 gpt-5.4         -> grok-4.5
 ```
+
+The direct mapping is required because explicit account mappings also act as
+the scheduler whitelist. The Messages compatibility path resolves Claude
+aliases to `grok-4.5` before account selection.
 
 The frontend selects all compatible Grok groups from live data and submits both
 the mappings and selected group IDs. Both backend account-creation services add
@@ -169,7 +175,8 @@ Upgrade acceptance checklist:
   frontend key-management tests pass.
 - Exact alias and family routing tests verify the selected group without
   cross-group failover.
-- Grok create tests verify frontend payloads and both backend creation paths.
+- Grok create tests verify frontend payloads, both backend creation paths, and
+  direct `grok-4.5` scheduler eligibility.
 - Existing single-group API keys retain their original behavior.
 
 Branches:

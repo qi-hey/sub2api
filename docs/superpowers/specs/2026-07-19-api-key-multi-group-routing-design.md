@@ -133,19 +133,25 @@ backup is created.
 
 ## Grok Account Defaults
 
-When creating a Grok account, initialize model mapping with exactly:
+When creating a Grok account, initialize the allowed model and compatibility
+mappings with:
 
 ```text
+grok-4.5        -> grok-4.5
 claude-opus-4-8 -> grok-4.5
 gpt-5.4          -> grok-4.5
 ```
 
+The frontend still presents the last two entries as the two compatibility
+mapping rows. The direct entry keeps `grok-4.5` in the effective scheduler
+whitelist after the Messages bridge resolves a Claude alias before selection.
+
 The frontend preselects every active compatible Grok group; with the current
 production data this selects Grok group `#12` automatically.
 
-The backend applies the same two model mappings when a Grok account is created
-through the API without an explicit model restriction/mapping. Explicit caller
-configuration always wins. Backend group assignment remains explicit in API
+The backend applies the same effective model mapping when a Grok account is
+created through the API without an explicit model restriction/mapping.
+Explicit caller configuration always wins. Backend group assignment remains explicit in API
 requests; the UI supplies the automatically selected group IDs. This avoids an
 API import silently attaching accounts to newly created groups.
 
@@ -211,4 +217,3 @@ Production smoke tests use the existing CC Switch key and verify:
 - `claude-opus-4-8` selects Grok `#12` and maps to `grok-4.5`
 - another available `claude-*` model selects Claude `#11`
 - usage/error records contain the actually selected group
-

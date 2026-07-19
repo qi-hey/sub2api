@@ -17,7 +17,9 @@ func TestGrokAccountDefaultsAddMissingModelMappingsWithoutMutatingInput(t *testi
 	require.Equal(t, map[string]any{
 		"claude-opus-4-8": "grok-4.5",
 		"gpt-5.4":         "grok-4.5",
+		"grok-4.5":        "grok-4.5",
 	}, got["model_mapping"])
+	require.True(t, (&Account{Platform: PlatformGrok, Credentials: got}).IsModelSupported("grok-4.5"))
 }
 
 func TestGrokAccountDefaultsPreserveExplicitMapping(t *testing.T) {
@@ -66,6 +68,7 @@ func TestAdminServiceCreateAccountAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 				require.Equal(t, map[string]any{
 					"claude-opus-4-8": "grok-4.5",
 					"gpt-5.4":         "grok-4.5",
+					"grok-4.5":        "grok-4.5",
 				}, created.Credentials["model_mapping"])
 			} else {
 				require.NotContains(t, created.Credentials, "model_mapping")
@@ -88,6 +91,7 @@ func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 			wantMapping: map[string]any{
 				"claude-opus-4-8": "grok-4.5",
 				"gpt-5.4":         "grok-4.5",
+				"grok-4.5":        "grok-4.5",
 			},
 		},
 		{
