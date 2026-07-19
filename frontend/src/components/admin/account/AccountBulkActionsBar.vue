@@ -23,7 +23,7 @@
       </button>
       </template>
     </div>
-    <div class="flex gap-2">
+    <div class="flex flex-wrap justify-end gap-2">
       <template v-if="selectedIds.length > 0">
         <button @click="$emit('delete')" class="btn btn-danger btn-sm">{{ t('admin.accounts.bulkActions.delete') }}</button>
         <button @click="$emit('reset-status')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.resetStatus') }}</button>
@@ -36,6 +36,19 @@
       <button @click="$emit('edit-filtered')" class="btn btn-primary btn-sm">
         {{ t('admin.accounts.bulkEdit.submit') }}
       </button>
+      <button
+        v-if="forbiddenCount > 0"
+        data-test="delete-all-forbidden"
+        class="btn btn-danger btn-sm"
+        :disabled="deletingForbidden"
+        @click="$emit('delete-all-forbidden')"
+      >
+        {{
+          deletingForbidden
+            ? t('admin.accounts.bulkActions.deletingAllForbidden')
+            : t('admin.accounts.bulkActions.deleteAllForbidden', { count: forbiddenCount })
+        }}
+      </button>
     </div>
   </div>
 </template>
@@ -43,7 +56,14 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-defineProps<{ selectedIds: number[] }>()
+withDefaults(defineProps<{
+  selectedIds: number[]
+  forbiddenCount?: number
+  deletingForbidden?: boolean
+}>(), {
+  forbiddenCount: 0,
+  deletingForbidden: false
+})
 defineEmits([
   'delete',
   'edit-selected',
@@ -53,7 +73,8 @@ defineEmits([
   'toggle-schedulable',
   'reset-status',
   'refresh-token',
-  'probe-upstream-billing'
+  'probe-upstream-billing',
+  'delete-all-forbidden'
 ])
 
 const { t } = useI18n()

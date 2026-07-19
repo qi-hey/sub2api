@@ -174,7 +174,10 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          :forbidden-count="forbiddenFilteredCount"
+          :deleting-forbidden="deletingForbidden"
           @delete="handleBulkDelete"
+          @delete-all-forbidden="handleBulkDeleteForbidden"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
           @probe-upstream-billing="handleBulkProbeUpstreamBilling"
@@ -572,6 +575,7 @@ const showTest = ref(false)
 const showStats = ref(false)
 const showErrorPassthrough = ref(false)
 const showTLSFingerprintProfiles = ref(false)
+const deletingForbidden = ref(false)
 const edAcc = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
@@ -893,6 +897,10 @@ const {
     sort_order: sortState.sort_order
   }
 })
+
+const forbiddenFilteredCount = computed(() =>
+  params.platform === 'grok' && params.status === 'forbidden' ? pagination.total : 0
+)
 
 const {
   selectedIds: selIds,
@@ -1455,6 +1463,51 @@ const toggleSelectAllVisible = (event: Event) => {
   toggleVisible(target.checked)
 }
 const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() } catch (error) { console.error('Failed to bulk delete accounts:', error) } }
+const handleBulkDeleteForbidden = async () => {
+  const expectedCount = forbiddenFilteredCount.value
+  if (expectedCount <= 0 || deletingForbidden.value) return
+  if (!confirm(t('admin.accounts.bulkActions.deleteAllForbiddenConfirm', { count: expectedCount }))) return
+
+  deletingForbidden.value = true
+  try {
+    const result = await adminAPI.accounts.bulkDeleteForbidden({
+      filters: {
+        platform: 'grok',
+        type: params.type,
+        status: 'forbidden',
+        group: params.group,
+        search: params.search,
+        privacy_mode: params.privacy_mode
+      },
+      expected_count: expectedCount
+    })
+
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.deleteAllForbiddenPartial', {
+        success: result.success,
+        failed: result.failed
+      }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.bulkActions.deleteAllForbiddenSuccess', { count: result.success }))
+    }
+    clearSelection()
+    await reload()
+  } catch (error: any) {
+    if (error?.status === 409 || error?.response?.status === 409) {
+      try {
+        await reload()
+      } catch (reloadError) {
+        console.error('Failed to reload changed Forbidden account results:', reloadError)
+      }
+      appStore.showError(t('admin.accounts.bulkActions.deleteAllForbiddenCountChanged'))
+    } else {
+      console.error('Failed to delete filtered Forbidden accounts:', error)
+      appStore.showError(extractApiErrorMessage(error, t('admin.accounts.bulkActions.deleteAllForbiddenFailed')))
+    }
+  } finally {
+    deletingForbidden.value = false
+  }
+}
 const handleBulkResetStatus = async () => {
   if (!confirm(t('common.confirm'))) return
   try {

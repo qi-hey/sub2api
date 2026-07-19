@@ -133,6 +133,7 @@ export default {
         tempUnschedulable: 'Temp Unschedulable',
         quotaExceeded: 'Quota Exceeded',
         unschedulable: 'Unschedulable',
+        forbidden: 'Forbidden (Grok 403)',
         rateLimitedUntil: 'Rate limited and removed from scheduling. Auto resumes at {time}',
         rateLimitedAutoResume: 'Auto resumes in {time}',
         modelRateLimitedUntil: '{model} rate limited until {time}',
@@ -350,7 +351,14 @@ export default {
         probeUpstreamBilling: 'Probe Upstream Rate',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
-        partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
+        partialSuccess: 'Partially completed: {success} succeeded, {failed} failed',
+        deleteAllForbidden: 'Delete all Forbidden ({count})',
+        deletingAllForbidden: 'Deleting Forbidden accounts...',
+        deleteAllForbiddenConfirm: 'Delete all {count} Grok accounts matching the current Forbidden filter? This action cannot be undone.',
+        deleteAllForbiddenSuccess: 'Deleted all {count} Forbidden accounts',
+        deleteAllForbiddenPartial: 'Forbidden deletion partially completed: {success} succeeded, {failed} failed',
+        deleteAllForbiddenCountChanged: 'The number of Forbidden accounts changed. The list was refreshed; review it and try again.',
+        deleteAllForbiddenFailed: 'Failed to delete Forbidden accounts'
       },
       bulkEdit: {
         title: 'Bulk Edit Accounts',

@@ -473,6 +473,36 @@ export async function bulkUpdate(
   return data
 }
 
+export interface BulkDeleteForbiddenRequest {
+  filters: {
+    platform: 'grok'
+    type?: string
+    status: 'forbidden'
+    group?: string
+    search?: string
+    privacy_mode?: string
+  }
+  expected_count: number
+}
+
+export interface BulkDeleteForbiddenResult {
+  success: number
+  failed: number
+  success_ids: number[]
+  failed_ids: number[]
+}
+
+export async function bulkDeleteForbidden(
+  payload: BulkDeleteForbiddenRequest
+): Promise<BulkDeleteForbiddenResult> {
+  const { data } = await apiClient.post<BulkDeleteForbiddenResult>(
+    '/admin/accounts/bulk-delete-forbidden',
+    payload,
+    { timeout: 600000 }
+  )
+  return data
+}
+
 /**
  * Get account today statistics
  * @param id - Account ID
@@ -915,6 +945,7 @@ export const accountsAPI = {
   batchCreate,
   batchUpdateCredentials,
   bulkUpdate,
+  bulkDeleteForbidden,
   previewFromCrs,
   syncFromCrs,
   exportData,

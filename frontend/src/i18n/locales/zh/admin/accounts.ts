@@ -288,6 +288,7 @@ export default {
         tempUnschedulable: '临时不可调度',
         quotaExceeded: '配额超限',
         unschedulable: '不可调度',
+        forbidden: 'Forbidden（Grok 403）',
         rateLimitedUntil: '限流中，当前不参与调度，预计 {time} 自动恢复',
         rateLimitedAutoResume: '{time} 自动恢复',
         modelRateLimitedUntil: '{model} 限流至 {time}',
@@ -454,7 +455,14 @@ export default {
         probeUpstreamBilling: '探测上游倍率',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
-        partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
+        partialSuccess: '操作部分完成：{success} 成功，{failed} 失败',
+        deleteAllForbidden: '删除全部 Forbidden（{count}）',
+        deletingAllForbidden: '正在删除 Forbidden 账号...',
+        deleteAllForbiddenConfirm: '确定删除当前筛选出的全部 {count} 个 Grok Forbidden 账号吗？此操作无法撤销。',
+        deleteAllForbiddenSuccess: '已删除全部 {count} 个 Forbidden 账号',
+        deleteAllForbiddenPartial: 'Forbidden 账号部分删除成功：成功 {success} 个，失败 {failed} 个',
+        deleteAllForbiddenCountChanged: 'Forbidden 账号数量已变化，列表已刷新。请核对后重试。',
+        deleteAllForbiddenFailed: '删除 Forbidden 账号失败'
       },
       bulkEdit: {
         title: '批量编辑账号',
