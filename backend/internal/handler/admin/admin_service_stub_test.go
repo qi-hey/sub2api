@@ -37,6 +37,8 @@ type stubAdminService struct {
 	getAccountResult                    *service.Account
 	updateAccountCalls                  int
 	updateAccountExtraCalls             int
+	deletedAccountIDs                   []int64
+	deleteAccountErrors                 map[int64]error
 	checkMixedErr                       error
 	lastMixedCheck                      struct {
 		accountID int64
@@ -456,7 +458,10 @@ func (s *stubAdminService) UpdateAccountExtra(ctx context.Context, id int64, upd
 }
 
 func (s *stubAdminService) DeleteAccount(ctx context.Context, id int64) error {
-	return nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deletedAccountIDs = append(s.deletedAccountIDs, id)
+	return s.deleteAccountErrors[id]
 }
 
 func (s *stubAdminService) RefreshAccountCredentials(ctx context.Context, id int64) (*service.Account, error) {

@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,7 +21,80 @@ func setupAccountListRouter() (*gin.Engine, *stubAdminService) {
 	adminSvc := newStubAdminService()
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.GET("/api/v1/admin/accounts", handler.List)
+	router.POST("/api/v1/admin/accounts/bulk-delete-forbidden", handler.BulkDeleteForbidden)
 	return router, adminSvc
+}
+
+func postBulkDeleteForbidden(t *testing.T, router http.Handler, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/bulk-delete-forbidden", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestAccountHandlerBulkDeleteForbiddenRejectsOtherStatuses(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"active"},"expected_count":1}`)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, adminSvc.deletedAccountIDs)
+}
+
+func TestAccountHandlerBulkDeleteForbiddenRejectsChangedCount(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	adminSvc.accounts = []service.Account{{ID: 11}, {ID: 12}}
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":1}`)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	require.Empty(t, adminSvc.deletedAccountIDs)
+	require.Equal(t, service.AccountStatusForbiddenFilter, adminSvc.lastListAccounts.status)
+}
+
+func TestAccountHandlerBulkDeleteForbiddenDeletesEveryResolvedAccount(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	adminSvc.accounts = []service.Account{{ID: 21}, {ID: 22}, {ID: 23}}
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":3}`)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data struct {
+			Success   int     `json:"success"`
+			Failed    int     `json:"failed"`
+			FailedIDs []int64 `json:"failed_ids"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Equal(t, 3, payload.Data.Success)
+	require.Zero(t, payload.Data.Failed)
+	require.Empty(t, payload.Data.FailedIDs)
+	require.ElementsMatch(t, []int64{21, 22, 23}, adminSvc.deletedAccountIDs)
+}
+
+func TestAccountHandlerBulkDeleteForbiddenReportsPartialFailures(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	adminSvc.accounts = []service.Account{{ID: 31}, {ID: 32}, {ID: 33}}
+	adminSvc.deleteAccountErrors = map[int64]error{32: errors.New("delete failed")}
+
+	rec := postBulkDeleteForbidden(t, router, `{"filters":{"platform":"grok","status":"forbidden"},"expected_count":3}`)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data struct {
+			Success   int     `json:"success"`
+			Failed    int     `json:"failed"`
+			FailedIDs []int64 `json:"failed_ids"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Equal(t, 2, payload.Data.Success)
+	require.Equal(t, 1, payload.Data.Failed)
+	require.Equal(t, []int64{32}, payload.Data.FailedIDs)
+	require.ElementsMatch(t, []int64{31, 32, 33}, adminSvc.deletedAccountIDs)
 }
 
 func TestAccountHandlerListIncludesCreatedAt(t *testing.T) {

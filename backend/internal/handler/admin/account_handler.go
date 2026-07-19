@@ -173,6 +173,18 @@ type BulkUpdateAccountFilters struct {
 	PrivacyMode string `json:"privacy_mode"`
 }
 
+type BulkDeleteForbiddenAccountsRequest struct {
+	Filters       *BulkUpdateAccountFilters `json:"filters"`
+	ExpectedCount *int64                    `json:"expected_count"`
+}
+
+type BulkDeleteForbiddenAccountsResult struct {
+	Success    int     `json:"success"`
+	Failed     int     `json:"failed"`
+	SuccessIDs []int64 `json:"success_ids"`
+	FailedIDs  []int64 `json:"failed_ids"`
+}
+
 // CheckMixedChannelRequest represents check mixed channel risk request
 type CheckMixedChannelRequest struct {
 	Platform  string  `json:"platform" binding:"required"`
@@ -669,6 +681,149 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	response.Paginated(c, result, total, page, pageSize)
+}
+
+const (
+	bulkDeleteForbiddenPageSize = 500
+	bulkDeleteForbiddenMaxCount = 5000
+	bulkDeleteForbiddenWorkers  = 4
+)
+
+func bulkDeleteForbiddenGroupID(group string) (int64, error) {
+	switch group = strings.TrimSpace(group); group {
+	case "":
+		return 0, nil
+	case accountListGroupUngroupedQueryValue:
+		return service.AccountListGroupUngrouped, nil
+	default:
+		groupID, err := strconv.ParseInt(group, 10, 64)
+		if err != nil || groupID < 0 {
+			return 0, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter")
+		}
+		return groupID, nil
+	}
+}
+
+func (h *AccountHandler) resolveBulkDeleteForbiddenIDs(ctx context.Context, filters *BulkUpdateAccountFilters) ([]int64, int64, error) {
+	groupID, err := bulkDeleteForbiddenGroupID(filters.Group)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	search := strings.TrimSpace(filters.Search)
+	if len(search) > 100 {
+		search = search[:100]
+	}
+	accountIDs := make([]int64, 0, bulkDeleteForbiddenPageSize)
+	for page := 1; ; page++ {
+		accounts, total, listErr := h.adminService.ListAccounts(
+			ctx,
+			page,
+			bulkDeleteForbiddenPageSize,
+			service.PlatformGrok,
+			strings.TrimSpace(filters.Type),
+			service.AccountStatusForbiddenFilter,
+			search,
+			groupID,
+			strings.TrimSpace(filters.PrivacyMode),
+			"id",
+			"asc",
+		)
+		if listErr != nil {
+			return nil, 0, listErr
+		}
+		if total > bulkDeleteForbiddenMaxCount {
+			return nil, total, nil
+		}
+		for _, account := range accounts {
+			accountIDs = append(accountIDs, account.ID)
+		}
+		if int64(len(accountIDs)) >= total || len(accounts) == 0 {
+			return accountIDs, total, nil
+		}
+	}
+}
+
+// BulkDeleteForbidden deletes every account matching the server-side Grok 403 filter.
+// POST /api/v1/admin/accounts/bulk-delete-forbidden
+func (h *AccountHandler) BulkDeleteForbidden(c *gin.Context) {
+	var req BulkDeleteForbiddenAccountsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.Filters == nil || strings.TrimSpace(req.Filters.Platform) != service.PlatformGrok ||
+		strings.TrimSpace(req.Filters.Status) != service.AccountStatusForbiddenFilter {
+		response.BadRequest(c, "bulk deletion requires platform=grok and status=forbidden")
+		return
+	}
+	if req.ExpectedCount == nil || *req.ExpectedCount < 0 {
+		response.BadRequest(c, "expected_count must be a non-negative integer")
+		return
+	}
+
+	accountIDs, total, err := h.resolveBulkDeleteForbiddenIDs(c.Request.Context(), req.Filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if total > bulkDeleteForbiddenMaxCount {
+		response.BadRequest(c, fmt.Sprintf("forbidden delete is limited to %d accounts", bulkDeleteForbiddenMaxCount))
+		return
+	}
+	if total != *req.ExpectedCount {
+		response.ErrorWithDetails(
+			c,
+			http.StatusConflict,
+			"forbidden account count changed; reload and confirm again",
+			"FORBIDDEN_COUNT_CHANGED",
+			map[string]string{
+				"expected_count": strconv.FormatInt(*req.ExpectedCount, 10),
+				"current_count":  strconv.FormatInt(total, 10),
+			},
+		)
+		return
+	}
+
+	result := BulkDeleteForbiddenAccountsResult{
+		SuccessIDs: make([]int64, 0, len(accountIDs)),
+		FailedIDs:  make([]int64, 0),
+	}
+	if len(accountIDs) == 0 {
+		response.Success(c, result)
+		return
+	}
+
+	workers := min(bulkDeleteForbiddenWorkers, len(accountIDs))
+	jobs := make(chan int64)
+	var wg sync.WaitGroup
+	var resultMu sync.Mutex
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for accountID := range jobs {
+				deleteErr := h.adminService.DeleteAccount(c.Request.Context(), accountID)
+				resultMu.Lock()
+				if deleteErr != nil {
+					result.Failed++
+					result.FailedIDs = append(result.FailedIDs, accountID)
+				} else {
+					result.Success++
+					result.SuccessIDs = append(result.SuccessIDs, accountID)
+				}
+				resultMu.Unlock()
+			}
+		}()
+	}
+	for _, accountID := range accountIDs {
+		jobs <- accountID
+	}
+	close(jobs)
+	wg.Wait()
+	sort.Slice(result.SuccessIDs, func(i, j int) bool { return result.SuccessIDs[i] < result.SuccessIDs[j] })
+	sort.Slice(result.FailedIDs, func(i, j int) bool { return result.FailedIDs[i] < result.FailedIDs[j] })
+	response.Success(c, result)
 }
 
 func buildAccountsListETag(
