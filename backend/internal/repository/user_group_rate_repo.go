@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"sort"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -167,6 +168,50 @@ func (r *userGroupRateRepository) GetRPMOverrideByUserAndGroup(ctx context.Conte
 	}
 	v := int(rpm.Int32)
 	return &v, nil
+}
+
+// GetRPMOverridesByUserAndGroupIDs 批量获取非 NULL 的 rpm_override。
+func (r *userGroupRateRepository) GetRPMOverridesByUserAndGroupIDs(ctx context.Context, userID int64, groupIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int)
+	seen := make(map[int64]struct{}, len(groupIDs))
+	normalizedGroupIDs := make([]int64, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		if _, exists := seen[groupID]; exists {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		normalizedGroupIDs = append(normalizedGroupIDs, groupID)
+	}
+	if len(normalizedGroupIDs) == 0 {
+		return result, nil
+	}
+	sort.Slice(normalizedGroupIDs, func(i, j int) bool { return normalizedGroupIDs[i] < normalizedGroupIDs[j] })
+
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT group_id, rpm_override
+		FROM user_group_rate_multipliers
+		WHERE user_id = $1 AND group_id = ANY($2) AND rpm_override IS NOT NULL
+	`, userID, pq.Array(normalizedGroupIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var groupID int64
+		var override int
+		if err := rows.Scan(&groupID, &override); err != nil {
+			return nil, err
+		}
+		result[groupID] = override
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // SyncUserGroupRates 同步用户的分组专属 rate_multiplier。

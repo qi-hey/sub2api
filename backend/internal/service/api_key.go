@@ -37,15 +37,19 @@ type APIKey struct {
 	IPWhitelist []string
 	IPBlacklist []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
-	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
-	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
-	LastUsedAt          *time.Time
-	LastUsedIP          *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	User                *User
-	Group               *Group
-	CurrentConcurrency  int
+	CompiledIPWhitelist       *ip.CompiledIPRules `json:"-"`
+	CompiledIPBlacklist       *ip.CompiledIPRules `json:"-"`
+	LastUsedAt                *time.Time
+	LastUsedIP                *string
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+	User                      *User
+	Group                     *Group
+	GroupIDs                  []int64
+	Groups                    []Group
+	GroupRPMOverrides         map[int64]int
+	GroupRPMOverridesResolved bool
+	CurrentConcurrency        int
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)
@@ -62,6 +66,165 @@ type APIKey struct {
 	Window5hStart *time.Time // Start of current 5h window
 	Window1dStart *time.Time // Start of current 1d window
 	Window7dStart *time.Time // Start of current 7d window
+}
+
+// WithSelectedGroup returns a request-local API key copy for one bound group.
+// It never mutates the authenticated or cached API key instance.
+func (k *APIKey) WithSelectedGroup(groupID int64) (*APIKey, error) {
+	if k == nil {
+		return nil, ErrAPIKeyGroupNotBound
+	}
+	clone := cloneAPIKeyForRequest(k)
+	for i := range clone.Groups {
+		if clone.Groups[i].ID != groupID {
+			continue
+		}
+		selectedID := groupID
+		clone.GroupID = &selectedID
+		clone.Group = cloneAPIKeyGroup(&clone.Groups[i])
+		setSelectedGroupRPMOverride(clone, groupID)
+		return clone, nil
+	}
+	if clone.GroupID != nil && *clone.GroupID == groupID && clone.Group != nil && clone.Group.ID == groupID {
+		selectedID := groupID
+		clone.GroupID = &selectedID
+		setSelectedGroupRPMOverride(clone, groupID)
+		return clone, nil
+	}
+	return nil, ErrAPIKeyGroupNotBound
+}
+
+func setSelectedGroupRPMOverride(apiKey *APIKey, groupID int64) {
+	if apiKey == nil || apiKey.User == nil {
+		return
+	}
+	apiKey.User.UserGroupRPMOverride = nil
+	apiKey.User.UserGroupRPMOverrideResolved = apiKey.GroupRPMOverridesResolved
+	if !apiKey.GroupRPMOverridesResolved {
+		return
+	}
+	override, ok := apiKey.GroupRPMOverrides[groupID]
+	if !ok {
+		return
+	}
+	apiKey.User.UserGroupRPMOverride = cloneAPIKeyValuePointer(&override)
+}
+
+func cloneAPIKeyForRequest(source *APIKey) *APIKey {
+	if source == nil {
+		return nil
+	}
+	clone := *source
+	clone.GroupID = cloneAPIKeyValuePointer(source.GroupID)
+	clone.IPWhitelist = append([]string(nil), source.IPWhitelist...)
+	clone.IPBlacklist = append([]string(nil), source.IPBlacklist...)
+	clone.LastUsedAt = cloneAPIKeyValuePointer(source.LastUsedAt)
+	clone.LastUsedIP = cloneAPIKeyValuePointer(source.LastUsedIP)
+	clone.ExpiresAt = cloneAPIKeyValuePointer(source.ExpiresAt)
+	clone.Window5hStart = cloneAPIKeyValuePointer(source.Window5hStart)
+	clone.Window1dStart = cloneAPIKeyValuePointer(source.Window1dStart)
+	clone.Window7dStart = cloneAPIKeyValuePointer(source.Window7dStart)
+	clone.GroupIDs = append([]int64(nil), source.GroupIDs...)
+	clone.GroupRPMOverrides = cloneAPIKeyRPMOverrides(source.GroupRPMOverrides)
+	clone.User = cloneAPIKeyUser(source.User)
+	clone.Group = cloneAPIKeyGroup(source.Group)
+	if source.Groups != nil {
+		clone.Groups = make([]Group, len(source.Groups))
+		for i := range source.Groups {
+			clone.Groups[i] = *cloneAPIKeyGroup(&source.Groups[i])
+		}
+	}
+	return &clone
+}
+
+func cloneAPIKeyUser(source *User) *User {
+	if source == nil {
+		return nil
+	}
+	clone := *source
+	clone.AllowedGroups = append([]int64(nil), source.AllowedGroups...)
+	clone.LastLoginAt = cloneAPIKeyValuePointer(source.LastLoginAt)
+	clone.LastActiveAt = cloneAPIKeyValuePointer(source.LastActiveAt)
+	clone.LastUsedAt = cloneAPIKeyValuePointer(source.LastUsedAt)
+	clone.DeletedAt = cloneAPIKeyValuePointer(source.DeletedAt)
+	clone.TotpSecretEncrypted = cloneAPIKeyValuePointer(source.TotpSecretEncrypted)
+	clone.TotpEnabledAt = cloneAPIKeyValuePointer(source.TotpEnabledAt)
+	clone.BalanceNotifyThreshold = cloneAPIKeyValuePointer(source.BalanceNotifyThreshold)
+	clone.BalanceNotifyExtraEmails = append([]NotifyEmailEntry(nil), source.BalanceNotifyExtraEmails...)
+	clone.UserGroupRPMOverride = cloneAPIKeyValuePointer(source.UserGroupRPMOverride)
+	if source.GroupRates != nil {
+		clone.GroupRates = make(map[int64]float64, len(source.GroupRates))
+		for groupID, rate := range source.GroupRates {
+			clone.GroupRates[groupID] = rate
+		}
+	}
+	return &clone
+}
+
+func cloneAPIKeyGroup(source *Group) *Group {
+	if source == nil {
+		return nil
+	}
+	clone := *source
+	clone.DailyLimitUSD = cloneAPIKeyValuePointer(source.DailyLimitUSD)
+	clone.WeeklyLimitUSD = cloneAPIKeyValuePointer(source.WeeklyLimitUSD)
+	clone.MonthlyLimitUSD = cloneAPIKeyValuePointer(source.MonthlyLimitUSD)
+	clone.ImagePrice1K = cloneAPIKeyValuePointer(source.ImagePrice1K)
+	clone.ImagePrice2K = cloneAPIKeyValuePointer(source.ImagePrice2K)
+	clone.ImagePrice4K = cloneAPIKeyValuePointer(source.ImagePrice4K)
+	clone.VideoPrice480P = cloneAPIKeyValuePointer(source.VideoPrice480P)
+	clone.VideoPrice720P = cloneAPIKeyValuePointer(source.VideoPrice720P)
+	clone.VideoPrice1080P = cloneAPIKeyValuePointer(source.VideoPrice1080P)
+	clone.WebSearchPricePerCall = cloneAPIKeyValuePointer(source.WebSearchPricePerCall)
+	clone.FallbackGroupID = cloneAPIKeyValuePointer(source.FallbackGroupID)
+	clone.FallbackGroupIDOnInvalidRequest = cloneAPIKeyValuePointer(source.FallbackGroupIDOnInvalidRequest)
+	clone.ModelRouting = cloneAPIKeyModelRouting(source.ModelRouting)
+	clone.SupportedModelScopes = append([]string(nil), source.SupportedModelScopes...)
+	clone.MessagesDispatchModelConfig = cloneAPIKeyMessagesDispatchModelConfig(source.MessagesDispatchModelConfig)
+	clone.ModelsListConfig.Models = append([]string(nil), source.ModelsListConfig.Models...)
+	clone.AccountGroups = append([]AccountGroup(nil), source.AccountGroups...)
+	return &clone
+}
+
+func cloneAPIKeyModelRouting(source map[string][]int64) map[string][]int64 {
+	if source == nil {
+		return nil
+	}
+	clone := make(map[string][]int64, len(source))
+	for model, accountIDs := range source {
+		clone[model] = append([]int64(nil), accountIDs...)
+	}
+	return clone
+}
+
+func cloneAPIKeyMessagesDispatchModelConfig(source OpenAIMessagesDispatchModelConfig) OpenAIMessagesDispatchModelConfig {
+	clone := source
+	if source.ExactModelMappings != nil {
+		clone.ExactModelMappings = make(map[string]string, len(source.ExactModelMappings))
+		for requestedModel, mappedModel := range source.ExactModelMappings {
+			clone.ExactModelMappings[requestedModel] = mappedModel
+		}
+	}
+	return clone
+}
+
+func cloneAPIKeyRPMOverrides(source map[int64]int) map[int64]int {
+	if source == nil {
+		return nil
+	}
+	clone := make(map[int64]int, len(source))
+	for groupID, override := range source {
+		clone[groupID] = override
+	}
+	return clone
+}
+
+func cloneAPIKeyValuePointer[T any](source *T) *T {
+	if source == nil {
+		return nil
+	}
+	clone := *source
+	return &clone
 }
 
 func (k *APIKey) IsActive() bool {

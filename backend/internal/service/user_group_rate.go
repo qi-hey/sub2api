@@ -39,6 +39,10 @@ type UserGroupRateRepository interface {
 	// GetRPMOverrideByUserAndGroup 获取用户在特定分组的 rpm_override（NULL 返回 nil）
 	GetRPMOverrideByUserAndGroup(ctx context.Context, userID, groupID int64) (*int, error)
 
+	// GetRPMOverridesByUserAndGroupIDs 批量获取非 NULL 的 rpm_override。
+	// 成功返回时，结果中缺失的 group 表示已确认没有 override。
+	GetRPMOverridesByUserAndGroupIDs(ctx context.Context, userID int64, groupIDs []int64) (map[int64]int, error)
+
 	// GetByGroupID 获取指定分组下所有用户的专属配置（rate 与 rpm_override 任一非 NULL 即返回）
 	GetByGroupID(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
 

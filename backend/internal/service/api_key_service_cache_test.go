@@ -454,6 +454,71 @@ func TestAPIKeyService_GetByKey_UsesL1Cache(t *testing.T) {
 	require.Equal(t, int32(1), atomic.LoadInt32(&calls))
 }
 
+func TestAPIKeyService_L1AuthSnapshotIsolatedFromReturnedAPIKeys(t *testing.T) {
+	var calls int32
+	groupID := int64(9)
+	override := 10
+	source := &APIKey{
+		ID:          31,
+		UserID:      3,
+		Status:      StatusActive,
+		GroupID:     &groupID,
+		GroupIDs:    []int64{groupID},
+		Group:       &Group{ID: groupID, ModelRouting: map[string][]int64{"gpt-*": {1}}},
+		Groups:      []Group{{ID: groupID, ModelRouting: map[string][]int64{"gpt-*": {1}}}},
+		IPWhitelist: []string{"10.0.0.1"},
+		User: &User{
+			ID:            3,
+			Status:        StatusActive,
+			Role:          RoleUser,
+			Balance:       5,
+			Concurrency:   2,
+			AllowedGroups: []int64{groupID},
+		},
+	}
+	repo := &authRepoStub{
+		getByKeyForAuth: func(context.Context, string) (*APIKey, error) {
+			atomic.AddInt32(&calls, 1)
+			return source, nil
+		},
+	}
+	rpmRepo := &apiKeyRPMOverrideRepoStub{overrides: map[int64]*int{groupID: &override}}
+	cfg := &config.Config{APIKeyAuth: config.APIKeyAuthCacheConfig{L1Size: 1000, L1TTLSeconds: 60}}
+	svc := NewAPIKeyService(repo, nil, nil, nil, rpmRepo, nil, cfg)
+
+	first, err := svc.GetByKey(context.Background(), "k-l1-isolation")
+	require.NoError(t, err)
+	svc.authCacheL1.Wait()
+	first.IPWhitelist[0] = "mutated"
+	first.GroupIDs[0] = 99
+	first.GroupRPMOverrides[groupID] = 99
+	first.User.AllowedGroups[0] = 99
+	first.Group.ModelRouting["gpt-*"][0] = 99
+
+	cacheKey := svc.authCacheKey("k-l1-isolation")
+	cachedValue, ok := svc.authCacheL1.Get(cacheKey)
+	require.True(t, ok)
+	cachedEntry := cachedValue.(*APIKeyAuthCacheEntry)
+	require.Equal(t, []string{"10.0.0.1"}, cachedEntry.Snapshot.IPWhitelist)
+	require.Equal(t, []int64{groupID}, cachedEntry.Snapshot.GroupIDs)
+	require.Equal(t, 10, cachedEntry.Snapshot.GroupRPMOverrides[groupID])
+	require.True(t, cachedEntry.Snapshot.GroupRPMOverridesResolved)
+
+	second, err := svc.GetByKey(context.Background(), "k-l1-isolation")
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.1"}, second.IPWhitelist)
+	require.Equal(t, []int64{groupID}, second.GroupIDs)
+	require.Equal(t, 10, second.GroupRPMOverrides[groupID])
+	require.True(t, second.GroupRPMOverridesResolved)
+	require.True(t, second.User.UserGroupRPMOverrideResolved)
+	require.Equal(t, []int64{groupID}, second.User.AllowedGroups)
+	require.Equal(t, int64(1), second.Group.ModelRouting["gpt-*"][0])
+	require.Equal(t, int32(1), atomic.LoadInt32(&calls))
+	require.Equal(t, 1, rpmRepo.bulkCalls)
+	require.Empty(t, rpmRepo.singleCalls)
+	require.Equal(t, []string{"10.0.0.1"}, source.IPWhitelist)
+}
+
 func TestAPIKeyService_InvalidateAuthCacheByUserID(t *testing.T) {
 	cache := &authCacheStub{}
 	repo := &authRepoStub{

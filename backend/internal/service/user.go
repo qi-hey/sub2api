@@ -56,9 +56,11 @@ type User struct {
 	RPMLimit int
 
 	// UserGroupRPMOverride 来自 auth cache snapshot 的 (user, group) RPM 覆盖值。
-	// nil = 该 API Key 对应的 (user, group) 无 override；非 nil 时 checkRPM 直接使用，
-	// 避免每请求查 DB。字段不持久化到数据库。
+	// 仅在 UserGroupRPMOverrideResolved=true 时有效；此时 nil 表示确定无 override。
+	// 字段不持久化到数据库。
 	UserGroupRPMOverride *int
+	// UserGroupRPMOverrideResolved 区分“确认无 override”和“尚未成功查询”。
+	UserGroupRPMOverrideResolved bool
 
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription

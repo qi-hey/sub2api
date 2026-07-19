@@ -549,3 +549,52 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind_NoAllowedGroupUpdate(t *te
 	require.False(t, userRepo.addGroupCalled)
 	require.False(t, got.AutoGrantedGroupAccess)
 }
+
+func TestAdminService_AdminUpdateAPIKeyGroupID_ReplacesExistingMultiGroupBindings(t *testing.T) {
+	existing := &APIKey{
+		ID:       1,
+		UserID:   42,
+		Key:      "sk-test",
+		GroupID:  int64Ptr(2),
+		Group:    &Group{ID: 2, Name: "Codex"},
+		GroupIDs: []int64{2, 12},
+		Groups:   []Group{{ID: 2, Name: "Codex"}, {ID: 12, Name: "Grok"}},
+	}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	groupRepo := &groupRepoStubForGroupUpdate{group: &Group{ID: 11, Name: "Claude", Status: StatusActive}}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	got, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(11))
+	require.NoError(t, err)
+	require.Equal(t, []int64{11}, got.APIKey.GroupIDs)
+	require.Equal(t, []Group{{ID: 11, Name: "Claude", Status: StatusActive}}, got.APIKey.Groups)
+	require.Equal(t, int64(11), *got.APIKey.GroupID)
+	require.Equal(t, int64(11), got.APIKey.Group.ID)
+	require.Equal(t, []int64{11}, apiKeyRepo.updated.GroupIDs)
+	require.Equal(t, []Group{{ID: 11, Name: "Claude", Status: StatusActive}}, apiKeyRepo.updated.Groups)
+}
+
+func TestAdminService_AdminUpdateAPIKeyGroupID_UnbindClearsExistingMultiGroupBindings(t *testing.T) {
+	existing := &APIKey{
+		ID:       1,
+		UserID:   42,
+		Key:      "sk-test",
+		GroupID:  int64Ptr(2),
+		Group:    &Group{ID: 2, Name: "Codex"},
+		GroupIDs: []int64{2, 12},
+		Groups:   []Group{{ID: 2, Name: "Codex"}, {ID: 12, Name: "Grok"}},
+	}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	got, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(0))
+	require.NoError(t, err)
+	require.Nil(t, got.APIKey.GroupID)
+	require.Nil(t, got.APIKey.Group)
+	require.Empty(t, got.APIKey.GroupIDs)
+	require.Empty(t, got.APIKey.Groups)
+	require.Nil(t, apiKeyRepo.updated.GroupID)
+	require.Nil(t, apiKeyRepo.updated.Group)
+	require.Empty(t, apiKeyRepo.updated.GroupIDs)
+	require.Empty(t, apiKeyRepo.updated.Groups)
+}

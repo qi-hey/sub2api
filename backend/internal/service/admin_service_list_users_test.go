@@ -93,6 +93,10 @@ func (s *userGroupRateRepoStubForListUsers) GetRPMOverrideByUserAndGroup(_ conte
 	panic("unexpected GetRPMOverrideByUserAndGroup call")
 }
 
+func (s *userGroupRateRepoStubForListUsers) GetRPMOverridesByUserAndGroupIDs(_ context.Context, _ int64, _ []int64) (map[int64]int, error) {
+	panic("unexpected GetRPMOverridesByUserAndGroupIDs call")
+}
+
 func (s *userGroupRateRepoStubForListUsers) SyncUserGroupRates(_ context.Context, userID int64, rates map[int64]*float64) error {
 	panic("unexpected SyncUserGroupRates call")
 }
