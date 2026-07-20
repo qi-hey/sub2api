@@ -1,0 +1,28 @@
+version=0.1.161-custom-multigroup-r6
+source_commit=e933015a010bdab1c4d4875cee90c0fbecb08a4d
+upstream_tag=v0.1.161
+artifact=build/sub2api-0.1.161-custom-multigroup-r6-linux-amd64
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+built_at_utc=2026-07-20T05:54:44Z
+size_bytes=111206562
+sha256=80153cb3d13d0db9f74c2e5e9a6ea78d05a56a507fd4ca69ce5539d3a9f0d74f
+frontend_file_count=170
+frontend_total_bytes=5491630
+frontend_index_sha256=89eed40133673b54c131f29964cb85071b74b0d5ee52afd565c8fd6f71bfa768
+
+verification:
+- Grok quota probe regression tests passed.
+- Structured chat permission 403 disables account scheduling and preserves the
+  403 usage snapshot used by the Forbidden filter.
+- Ambiguous 403 and 429 responses do not permanently disable scheduling.
+- Upstream error bodies remain redacted from returned errors and logs.
+- Forbidden repository filter tests passed.
+- Full service package has one unrelated existing timing failure:
+  TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig.
+- Linux/amd64 embed build passed.
+
+deployment:
+- pending
