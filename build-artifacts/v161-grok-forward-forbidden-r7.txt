@@ -28,4 +28,16 @@ verification:
 - Linux/amd64 embed build passed.
 
 deployment:
-- pending
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=e1d40b21dc8634aca8e04b739a5435b03ccb1f9dcc9486e8954686afea60c50a
+- binary_backup=/opt/sub2api/backups/sub2api_before_r7_20260720_073850
+- database_backup=/opt/sub2api/backups/sub2api_before_r7_20260720_073850.dump
+- database_backup_pg_restore_list=passed
+- service_state=active/running
+- service_restarts_after_deploy=0
+- health_status=ok
+- live_messages_test_status=200
+- live_messages_test_output=OK
+- live_permission_denied_accounts_disabled=9
+- live_disabled_snapshot_source=upstream_response
+- live_disabled_snapshot_status=403
