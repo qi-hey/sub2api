@@ -1,0 +1,31 @@
+version=0.1.161-custom-multigroup-r7
+source_commit=6e74a99c1a0c36d11596ec73514fb8d60ffa23e3
+upstream_tag=v0.1.161
+artifact=build/sub2api-0.1.161-custom-multigroup-r7-linux-amd64
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+built_at_utc=2026-07-20T07:37:55Z
+size_bytes=111206562
+sha256=e1d40b21dc8634aca8e04b739a5435b03ccb1f9dcc9486e8954686afea60c50a
+
+root_cause:
+- Live Grok forwarding treated every HTTP 403 as a temporary 30-minute pause.
+- A structured chat permission denial did not overwrite a stale 200 usage
+  snapshot and did not set schedulable=false.
+- One request could therefore fail over through many accounts whose old probe
+  snapshot still reported 200.
+
+verification:
+- Direct production probe of account 70 returned the same permission-denied
+  response for stream=true and stream=false, ruling out non-streaming format as
+  the cause.
+- Live-forward permission-denied regression test passed.
+- Generic 403 temporary cooldown and 429 rate-limit regression tests passed.
+- Service Grok tests passed.
+- Repository Grok and Forbidden tests passed.
+- Linux/amd64 embed build passed.
+
+deployment:
+- pending
