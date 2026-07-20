@@ -194,7 +194,22 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	}
 	if resp.StatusCode >= 400 {
 		const reason = "GROK_QUOTA_PROBE_UPSTREAM_ERROR"
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		if account.Schedulable && isGrokChatPermissionDenied(resp.StatusCode, responseBody) {
+			if err := s.accountRepo.SetSchedulable(ctx, account.ID, false); err != nil {
+				slog.Warn(
+					"grok_chat_permission_denied_disable_failed",
+					"account_id", account.ID,
+					"error", err,
+				)
+			} else {
+				slog.Warn(
+					"grok_chat_permission_denied_disabled",
+					"account_id", account.ID,
+					"model", probeModel,
+				)
+			}
+		}
 		slog.Warn(
 			"grok_quota_probe_failed",
 			"account_id", account.ID,
@@ -211,6 +226,39 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 		)
 	}
 	return result, nil
+}
+
+func isGrokChatPermissionDenied(statusCode int, body []byte) bool {
+	if statusCode != http.StatusForbidden || len(body) == 0 {
+		return false
+	}
+
+	var payload struct {
+		Code    string `json:"code"`
+		Error   any    `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false
+	}
+
+	code := payload.Code
+	message := payload.Message
+	switch value := payload.Error.(type) {
+	case string:
+		message = value
+	case map[string]any:
+		if code == "" {
+			code, _ = value["code"].(string)
+		}
+		if message == "" {
+			message, _ = value["message"].(string)
+		}
+	}
+
+	normalizedCode := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(code)), "-", "_")
+	return normalizedCode == "permission_denied" &&
+		strings.Contains(strings.ToLower(message), "access to the chat endpoint is denied")
 }
 
 // ProbeBilling only calls the xAI billing endpoints. Account usage refreshes

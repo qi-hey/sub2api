@@ -25,6 +25,9 @@ type grokQuotaAccountRepo struct {
 	*mockAccountRepoForPlatform
 	updates               map[int64]map[string]any
 	updateCalls           int
+	schedulableCalls      int
+	lastSchedulableID     int64
+	lastSchedulable       bool
 	rateLimitedCalls      int
 	lastRateLimitedID     int64
 	lastRateLimitResetAt  time.Time
@@ -36,6 +39,18 @@ type grokQuotaAccountRepo struct {
 	recoveryObservedAt    time.Time
 	recoveryObservedReset time.Time
 	recoveryClearResult   bool
+}
+
+func (r *grokQuotaAccountRepo) SetSchedulable(_ context.Context, id int64, schedulable bool) error {
+	r.schedulableCalls++
+	r.lastSchedulableID = id
+	r.lastSchedulable = schedulable
+	if r.mockAccountRepoForPlatform != nil {
+		if account := r.accountsByID[id]; account != nil {
+			account.Schedulable = schedulable
+		}
+	}
+	return nil
 }
 
 func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
@@ -324,6 +339,60 @@ func TestGrokQuotaServiceProbeUsageReportsProbeModelOnUpstreamError(t *testing.T
 	require.Contains(t, infraerrors.Message(err), `probe model "grok-4.5"`)
 }
 
+func TestGrokQuotaServiceProbeUsageDisablesSchedulingOnChatPermissionDenied(t *testing.T) {
+	t.Parallel()
+
+	account := healthyGrokQuotaOAuthAccount(50)
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{50: account},
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusForbidden,
+		Header:     http.Header{},
+		Body: io.NopCloser(strings.NewReader(
+			`{"code":"permission_denied","error":"Access to the chat endpoint is denied. Please ensure you're using the correct credentials. If you believe this is a mistake, please contact support."}`,
+		)),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+
+	_, err := svc.ProbeUsage(context.Background(), account.ID)
+	require.Error(t, err)
+	require.Equal(t, "GROK_QUOTA_PROBE_UPSTREAM_ERROR", infraerrors.Reason(err))
+	require.Equal(t, 1, repo.schedulableCalls)
+	require.Equal(t, account.ID, repo.lastSchedulableID)
+	require.False(t, repo.lastSchedulable)
+	require.False(t, account.Schedulable)
+
+	snapshot, ok := repo.updates[account.ID][grokQuotaSnapshotExtraKey].(*xai.QuotaSnapshot)
+	require.True(t, ok)
+	require.Equal(t, http.StatusForbidden, snapshot.StatusCode)
+}
+
+func TestGrokQuotaServiceProbeUsageKeepsSchedulingOnAmbiguousForbidden(t *testing.T) {
+	t.Parallel()
+
+	account := healthyGrokQuotaOAuthAccount(51)
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{51: account},
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusForbidden,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`{"error":"temporary policy check failed"}`)),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+
+	_, err := svc.ProbeUsage(context.Background(), account.ID)
+	require.Error(t, err)
+	require.Equal(t, "GROK_QUOTA_PROBE_UPSTREAM_ERROR", infraerrors.Reason(err))
+	require.Zero(t, repo.schedulableCalls)
+	require.True(t, account.Schedulable)
+}
+
 func TestGrokQuotaServiceProbeUsageRedactsUpstreamErrorBodyFromErrorAndLogs(t *testing.T) {
 	const upstreamSecret = "upstream-secret-refresh-token"
 	account := healthyGrokQuotaOAuthAccount(49)
@@ -464,6 +533,8 @@ func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
 	require.WithinDuration(t, time.Now().Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
 	require.Zero(t, repo.tempUnschedCalls)
+	require.Zero(t, repo.schedulableCalls)
+	require.True(t, account.Schedulable)
 }
 
 func TestGrokQuotaServiceQueryQuotaFreeFallsBackToGrok45(t *testing.T) {

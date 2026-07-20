@@ -186,6 +186,14 @@ Grok accounts. It does not query `accounts.status`; it matches accounts whose
 `extra.grok_usage_snapshot.status_code` is `403`. Selecting this filter in the
 admin UI automatically selects the Grok platform.
 
+An active Grok quota probe that receives the structured xAI error
+`permission_denied` together with `Access to the chat endpoint is denied`
+automatically sets the account to `schedulable=false`. The 403 snapshot remains
+the source of the Forbidden filter, so the disabled account can still be
+reviewed, reauthorized, or deleted by an administrator. Ambiguous 403 responses
+and 429 rate limits must not permanently disable scheduling, and successful
+probes must not automatically re-enable accounts that were disabled manually.
+
 The filtered view exposes a protected "delete all Forbidden" action so cleanup
 is not limited to the current 20-row page. This action must retain all of the
 following safeguards:
@@ -209,6 +217,10 @@ Upgrade acceptance checklist:
 
 - A Grok account with a 403 usage snapshot appears in the Forbidden filter
   even when its primary account status remains `active`.
+- A structured chat-permission 403 from the active quota probe disables
+  scheduling while preserving the account and OAuth credentials.
+- Ambiguous 403 responses and 429 rate limits do not permanently disable the
+  account.
 - Non-Grok accounts and Grok accounts without a 403 usage snapshot do not
   appear in this filter.
 - Success, count-change (HTTP 409), and partial-failure frontend tests pass.
