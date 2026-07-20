@@ -77,6 +77,115 @@ func TestAdminServiceCreateAccountAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 	}
 }
 
+func TestAdminServiceCreateAccountBindsOnlyActiveGrokGroupWhenGroupIDsMissing(t *testing.T) {
+	repo := &grokDefaultsAccountRepo{}
+	groupRepo := &grokDefaultsGroupRepo{
+		groups: []Group{{ID: 12, Name: "Grok", Platform: PlatformGrok, Status: StatusActive}},
+	}
+	service := &adminServiceImpl{accountRepo: repo, groupRepo: groupRepo}
+
+	created, err := service.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:        "grok oauth",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "token"},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, created)
+	require.Equal(t, []int64{12}, repo.boundGroupIDs)
+}
+
+func TestAdminServiceCreateAccountPreservesExplicitGrokGroupIDs(t *testing.T) {
+	repo := &grokDefaultsAccountRepo{}
+	service := &adminServiceImpl{accountRepo: repo}
+
+	_, err := service.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:        "grok oauth",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "token"},
+		GroupIDs:    []int64{99},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{99}, repo.boundGroupIDs)
+}
+
+func TestAdminServiceCreateAccountLeavesGrokUngroupedWhenMultipleGroupsAreAmbiguous(t *testing.T) {
+	repo := &grokDefaultsAccountRepo{}
+	groupRepo := &grokDefaultsGroupRepo{
+		groups: []Group{{ID: 12, Name: "Grok"}, {ID: 13, Name: "Grok backup"}},
+	}
+	service := &adminServiceImpl{accountRepo: repo, groupRepo: groupRepo}
+
+	_, err := service.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:        "grok oauth",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "token"},
+	})
+
+	require.NoError(t, err)
+	require.Nil(t, repo.boundGroupIDs)
+}
+
+func TestAdminServiceCreateAccountKeepsNamedDefaultForOtherPlatforms(t *testing.T) {
+	repo := &grokDefaultsAccountRepo{}
+	groupRepo := &grokDefaultsGroupRepo{
+		groups: []Group{{ID: 2, Name: "openai-default"}},
+	}
+	service := &adminServiceImpl{accountRepo: repo, groupRepo: groupRepo}
+
+	_, err := service.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:        "openai api key",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{2}, repo.boundGroupIDs)
+}
+
+func TestDefaultGroupIDsForCreate(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform string
+		groups   []Group
+		want     []int64
+	}{
+		{
+			name:     "named default wins",
+			platform: PlatformGrok,
+			groups:   []Group{{ID: 12, Name: "Grok"}, {ID: 13, Name: "grok-default"}},
+			want:     []int64{13},
+		},
+		{
+			name:     "unique Grok group",
+			platform: PlatformGrok,
+			groups:   []Group{{ID: 12, Name: "Grok"}},
+			want:     []int64{12},
+		},
+		{
+			name:     "ambiguous Grok groups",
+			platform: PlatformGrok,
+			groups:   []Group{{ID: 12, Name: "Grok"}, {ID: 13, Name: "Grok backup"}},
+		},
+		{
+			name:     "other platform keeps existing behavior",
+			platform: PlatformOpenAI,
+			groups:   []Group{{ID: 2, Name: "Codex"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, defaultGroupIDsForCreate(tt.platform, tt.groups))
+		})
+	}
+}
+
 func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -136,7 +245,8 @@ func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 
 type grokDefaultsAccountRepo struct {
 	AccountRepository
-	created *Account
+	created       *Account
+	boundGroupIDs []int64
 }
 
 func (r *grokDefaultsAccountRepo) Create(_ context.Context, account *Account) error {
@@ -144,4 +254,18 @@ func (r *grokDefaultsAccountRepo) Create(_ context.Context, account *Account) er
 	r.created = &clone
 	account.ID = 1
 	return nil
+}
+
+func (r *grokDefaultsAccountRepo) BindGroups(_ context.Context, _ int64, groupIDs []int64) error {
+	r.boundGroupIDs = append([]int64(nil), groupIDs...)
+	return nil
+}
+
+type grokDefaultsGroupRepo struct {
+	GroupRepository
+	groups []Group
+}
+
+func (r *grokDefaultsGroupRepo) ListActiveByPlatform(_ context.Context, _ string) ([]Group, error) {
+	return append([]Group(nil), r.groups...), nil
 }

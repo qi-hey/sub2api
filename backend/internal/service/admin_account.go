@@ -530,15 +530,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组
 	if len(groupIDs) == 0 && !input.SkipDefaultGroupBind {
-		defaultGroupName := input.Platform + "-default"
 		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
 		if err == nil {
-			for _, g := range groups {
-				if g.Name == defaultGroupName {
-					groupIDs = []int64{g.ID}
-					break
-				}
-			}
+			groupIDs = defaultGroupIDsForCreate(input.Platform, groups)
 		}
 	}
 
@@ -595,6 +589,19 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	}
 
 	return account, nil
+}
+
+func defaultGroupIDsForCreate(platform string, groups []Group) []int64 {
+	defaultGroupName := platform + "-default"
+	for _, group := range groups {
+		if group.Name == defaultGroupName {
+			return []int64{group.ID}
+		}
+	}
+	if platform == PlatformGrok && len(groups) == 1 {
+		return []int64{groups[0].ID}
+	}
+	return nil
 }
 
 type accountProbeEnabledAtomicUpdater interface {
