@@ -25,4 +25,16 @@ verification:
 - Linux/amd64 embed build passed.
 
 deployment:
-- pending
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=80153cb3d13d0db9f74c2e5e9a6ea78d05a56a507fd4ca69ce5539d3a9f0d74f
+- binary_backup=/opt/sub2api/backups/sub2api_before_r6_20260720_055609
+- database_backup=/opt/sub2api/backups/sub2api_before_r6_20260720_055609.dump
+- database_backup_pg_restore_list=passed
+- service_state=active/running
+- service_restarts_after_deploy=0
+- health_status=ok
+- production_auto_disabled_observed=20
+- observed_rows_preserved_status=active
+- observed_rows_schedulable=false
+- observed_rows_grok_usage_status=403
+- historical_forbidden_rows_left_unchanged=183
