@@ -186,13 +186,15 @@ Grok accounts. It does not query `accounts.status`; it matches accounts whose
 `extra.grok_usage_snapshot.status_code` is `403`. Selecting this filter in the
 admin UI automatically selects the Grok platform.
 
-An active Grok quota probe that receives the structured xAI error
-`permission_denied` together with `Access to the chat endpoint is denied`
-automatically sets the account to `schedulable=false`. The 403 snapshot remains
-the source of the Forbidden filter, so the disabled account can still be
-reviewed, reauthorized, or deleted by an administrator. Ambiguous 403 responses
-and 429 rate limits must not permanently disable scheduling, and successful
-probes must not automatically re-enable accounts that were disabled manually.
+An active Grok quota probe or live forwarding response that receives the
+structured xAI error `permission_denied` together with
+`Access to the chat endpoint is denied` automatically sets the account to
+`schedulable=false`. Live forwarding must persist an `upstream_response` 403
+snapshot even when xAI omits quota headers. The 403 snapshot remains the source
+of the Forbidden filter, so the disabled account can still be reviewed,
+reauthorized, or deleted by an administrator. Ambiguous 403 responses and 429
+rate limits must not permanently disable scheduling, and successful probes must
+not automatically re-enable accounts that were disabled manually.
 
 The filtered view exposes a protected "delete all Forbidden" action so cleanup
 is not limited to the current 20-row page. This action must retain all of the
@@ -219,6 +221,10 @@ Upgrade acceptance checklist:
   even when its primary account status remains `active`.
 - A structured chat-permission 403 from the active quota probe disables
   scheduling while preserving the account and OAuth credentials.
+- The same structured 403 from live Responses, Messages compatibility,
+  Chat Completions bridge, WebSocket bridge, or media traffic immediately
+  persists a Forbidden snapshot and disables scheduling instead of cycling the
+  account through a temporary cooldown.
 - Ambiguous 403 responses and 429 rate limits do not permanently disable the
   account.
 - Non-Grok accounts and Grok accounts without a 403 usage snapshot do not

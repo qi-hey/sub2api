@@ -1125,6 +1125,28 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 	if s == nil || account == nil {
 		return
 	}
+	if isGrokChatPermissionDenied(statusCode, responseBody) {
+		stateCtx, cancel := openAIAccountStateContext(ctx)
+		defer cancel()
+
+		snapshot := xai.ObserveQuotaHeaders(headers, statusCode, "upstream_response")
+		if s.accountRepo != nil {
+			if err := s.accountRepo.UpdateExtra(stateCtx, account.ID, map[string]any{
+				grokQuotaSnapshotExtraKey: snapshot,
+			}); err != nil {
+				slog.Warn("grok_chat_permission_denied_snapshot_failed", "account_id", account.ID, "error", err)
+			}
+			if account.Schedulable {
+				if err := s.accountRepo.SetSchedulable(stateCtx, account.ID, false); err != nil {
+					slog.Warn("grok_chat_permission_denied_disable_failed", "account_id", account.ID, "error", err)
+				} else {
+					slog.Warn("grok_chat_permission_denied_disabled", "account_id", account.ID, "source", "upstream_response")
+				}
+			}
+		}
+		return
+	}
+
 	now := time.Now()
 	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
 	switch statusCode {
@@ -1139,7 +1161,6 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
 		}
 	}
-	_ = responseBody
 }
 
 func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *Account, cooldown time.Duration, reason string) {

@@ -2132,6 +2132,36 @@ func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *test
 	}
 }
 
+func TestHandleGrokAccountUpstreamErrorDisablesChatPermissionDenied(t *testing.T) {
+	account := &Account{
+		ID:          70,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	body := []byte(`{"code":"permission-denied","error":"Access to the chat endpoint is denied. Please ensure you're using the correct credentials. If you believe this is a mistake, please log into console.x.ai and update the permissions, or contact support."}`)
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusForbidden, http.Header{}, body)
+
+	require.Equal(t, 1, repo.schedulableCalls)
+	require.Equal(t, account.ID, repo.lastSchedulableID)
+	require.False(t, repo.lastSchedulable)
+	require.False(t, account.Schedulable)
+	require.Zero(t, repo.tempUnschedCalls)
+
+	snapshot, ok := repo.updates[account.ID][grokQuotaSnapshotExtraKey].(*xai.QuotaSnapshot)
+	require.True(t, ok)
+	require.Equal(t, http.StatusForbidden, snapshot.StatusCode)
+	require.Equal(t, "upstream_response", snapshot.ObservationSource)
+}
+
 func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testing.T) {
 	account := &Account{ID: 61, Platform: PlatformGrok, Type: AccountTypeOAuth}
 	repo := &grokQuotaAccountRepo{}
