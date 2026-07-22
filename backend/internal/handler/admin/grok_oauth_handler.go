@@ -517,7 +517,12 @@ func (h *GrokOAuthHandler) QueryQuota(c *gin.Context) {
 		response.BadRequest(c, "grok quota service is not enabled")
 		return
 	}
-	result, err := h.quotaService.QueryQuota(c.Request.Context(), accountID)
+	var result *service.GrokQuotaProbeResult
+	if strings.EqualFold(strings.TrimSpace(c.Query("probe")), "active") {
+		result, err = h.quotaService.ProbeUsage(c.Request.Context(), accountID)
+	} else {
+		result, err = h.quotaService.QueryQuota(c.Request.Context(), accountID)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

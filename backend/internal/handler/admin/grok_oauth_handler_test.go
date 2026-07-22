@@ -147,6 +147,42 @@ func TestGrokOAuthHandlerQueryQuotaProbesUpstream(t *testing.T) {
 	require.NotNil(t, repo.updates[42])
 }
 
+func TestGrokOAuthHandlerQueryQuotaCanForceActiveProbe(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &grokQuotaHandlerAccountRepo{account: &service.Account{
+		ID:          42,
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":  "access-token",
+			"refresh_token": "refresh-token",
+			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+		},
+	}}
+	upstream := &grokQuotaHandlerUpstream{}
+	quotaService := service.NewGrokQuotaService(repo, nil, service.NewGrokTokenProvider(repo, nil), upstream, nil)
+	handler := NewGrokOAuthHandler(nil, nil, quotaService, nil)
+
+	router := gin.New()
+	router.GET("/api/v1/admin/grok/accounts/:id/quota", handler.QueryQuota)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/grok/accounts/42/quota?probe=active", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"source":"active_probe"`)
+	require.NotContains(t, rec.Body.String(), `"billing":`)
+	upstream.mu.Lock()
+	requests := append([]*http.Request(nil), upstream.requests...)
+	upstream.mu.Unlock()
+	require.Len(t, requests, 1)
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", requests[0].URL.String())
+}
+
 func TestGrokOAuthHandlerResetQuotaReturnsUnsupported(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
