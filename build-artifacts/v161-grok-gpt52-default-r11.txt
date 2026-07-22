@@ -1,0 +1,33 @@
+version=0.1.161-custom-multigroup-r11
+source_commit=d63132e7e
+upstream_tag=v0.1.161
+artifact=build/sub2api-0.1.161-custom-multigroup-r11-linux-amd64
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+size_bytes=111255714
+sha256=553b05d3c0cf0da90faf414306e85504c53cd43948954c337ac80391e9206131
+
+features:
+- New Grok account defaults map gpt-5.2 to grok-4.5.
+- The previous gpt-5.4 to grok-4.5 new-account default is removed.
+- claude-opus-4-8 and direct grok-4.5 compatibility mappings are retained.
+- Frontend create defaults and backend create/import fallbacks remain aligned.
+- Existing Grok account mappings are not modified.
+- Existing API-key multi-group routing policy is not modified.
+
+verification:
+- Focused backend Grok account-default tests passed.
+- Frontend useModelWhitelist test file passed: 19 tests.
+- Embedded frontend production build passed.
+- Linux/amd64 embedded binary build passed.
+
+deployment:
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=553b05d3c0cf0da90faf414306e85504c53cd43948954c337ac80391e9206131
+- previous_version=0.1.161-custom-multigroup-r10
+- rollback_backup=/opt/sub2api/backups/sub2api_before_r11_20260722_082200
+- service_state=active/running
+- service_restarts_after_deploy=0
+- health_status=ok
