@@ -1,17 +1,26 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 var (
 	errOpenAIGPT54FallbackNotEligible     = errors.New("gpt-5.4 grok fallback is not eligible")
 	errOpenAIGPT54FallbackOutputStarted   = errors.New("gpt-5.4 grok fallback cannot switch after output")
 	errOpenAIGPT54FallbackAlreadySwitched = errors.New("gpt-5.4 grok fallback already switched")
+	errOpenAIGPT54FallbackSubscription    = errors.New("gpt-5.4 openai fallback subscription is unavailable")
 )
+
+type openAIFallbackSubscriptionStore interface {
+	GetActiveSubscription(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error)
+}
 
 const (
 	openAIGPT54PrimaryRoute = iota
@@ -71,6 +80,12 @@ func (r *openAIGPT54Route) subscription() *service.UserSubscription {
 		return nil
 	}
 	return r.currentSubscription
+}
+
+func (r *openAIGPT54Route) setSubscription(subscription *service.UserSubscription) {
+	if r != nil {
+		r.currentSubscription = subscription
+	}
 }
 
 func (r *openAIGPT54Route) platform() string {
@@ -140,4 +155,108 @@ func (r *openAIGPT54Route) switchToOpenAI(reason string, outputStarted bool) err
 	r.didSwitch = true
 	r.reason = strings.TrimSpace(reason)
 	return nil
+}
+
+func (h *OpenAIGatewayHandler) switchOpenAIGPT54Route(c *gin.Context, route *openAIGPT54Route, reason string, outputStarted bool) error {
+	if route == nil || !route.canFallback() {
+		return errOpenAIGPT54FallbackNotEligible
+	}
+	if outputStarted {
+		return errOpenAIGPT54FallbackOutputStarted
+	}
+
+	fallbackAPIKey, err := service.ResolveAPIKeyRequestPlatform(route.sourceAPIKey, service.PlatformOpenAI)
+	if err != nil {
+		return err
+	}
+	subscription, err := h.loadOpenAIFallbackSubscription(c.Request.Context(), fallbackAPIKey)
+	if err != nil {
+		return err
+	}
+	if h != nil && h.billingCacheService != nil {
+		if err := h.billingCacheService.CheckBillingEligibilityForRouteSwitch(
+			c.Request.Context(),
+			fallbackAPIKey.User,
+			fallbackAPIKey,
+			fallbackAPIKey.Group,
+			subscription,
+			service.QuotaPlatform(c.Request.Context(), fallbackAPIKey),
+		); err != nil {
+			return err
+		}
+	}
+	if err := route.switchToOpenAI(reason, false); err != nil {
+		return err
+	}
+	route.setSubscription(subscription)
+	applyOpenAIGPT54RouteToContext(c, route)
+	return nil
+}
+
+func (h *OpenAIGatewayHandler) restoreOpenAIGPT54RouteContinuity(
+	c *gin.Context,
+	route *openAIGPT54Route,
+	sessionHash string,
+	previousResponseID string,
+	requiredCapability service.OpenAIEndpointCapability,
+	requireCompact bool,
+) (bool, error) {
+	if h == nil || h.gatewayService == nil || c == nil || c.Request == nil || route == nil || !route.canFallback() {
+		return false, nil
+	}
+	fallbackAPIKey, err := service.ResolveAPIKeyRequestPlatform(route.sourceAPIKey, service.PlatformOpenAI)
+	if err != nil {
+		return false, nil
+	}
+	if !h.gatewayService.HasOpenAIRouteContinuity(
+		c.Request.Context(),
+		fallbackAPIKey.GroupID,
+		sessionHash,
+		previousResponseID,
+		route.requestedModel,
+		requiredCapability,
+		requireCompact,
+	) {
+		return false, nil
+	}
+	subscription, err := h.loadOpenAIFallbackSubscription(c.Request.Context(), fallbackAPIKey)
+	if err != nil {
+		return false, err
+	}
+	if err := route.switchToOpenAI("openai_route_continuity", false); err != nil {
+		return false, err
+	}
+	route.setSubscription(subscription)
+	applyOpenAIGPT54RouteToContext(c, route)
+	return true, nil
+}
+
+func (h *OpenAIGatewayHandler) loadOpenAIFallbackSubscription(ctx context.Context, apiKey *service.APIKey) (*service.UserSubscription, error) {
+	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.IsSubscriptionType() {
+		return nil, nil
+	}
+	if h == nil || h.fallbackSubscriptionStore == nil || apiKey.User == nil {
+		return nil, errOpenAIGPT54FallbackSubscription
+	}
+	subscription, err := h.fallbackSubscriptionStore.GetActiveSubscription(ctx, apiKey.User.ID, apiKey.Group.ID)
+	if err != nil {
+		return nil, err
+	}
+	if subscription == nil {
+		return nil, errOpenAIGPT54FallbackSubscription
+	}
+	return subscription, nil
+}
+
+func applyOpenAIGPT54RouteToContext(c *gin.Context, route *openAIGPT54Route) {
+	if c == nil || c.Request == nil || route == nil || route.apiKey() == nil {
+		return
+	}
+	apiKey := route.apiKey()
+	c.Set(string(middleware2.ContextKeyAPIKey), apiKey)
+	middleware2.SetOpsFallbackAPIKey(c, apiKey)
+	c.Set(string(middleware2.ContextKeySubscription), route.subscription())
+	if apiKey.Group != nil {
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.Group, apiKey.Group))
+	}
 }

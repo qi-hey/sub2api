@@ -1,9 +1,17 @@
 package handler
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -121,6 +129,99 @@ func TestGPT54GrokFirstRouteCannotSwitchTwice(t *testing.T) {
 	require.Equal(t, "first", route.fallbackReason())
 }
 
+func TestGPT54GrokFirstRouteHandlerSwitchLoadsDestinationSubscriptionAndUpdatesContext(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	key := gpt54RouteTestAPIKey(service.PlatformGrok, false)
+	for i := range key.Groups {
+		if key.Groups[i].Platform == service.PlatformOpenAI {
+			key.Groups[i].SubscriptionType = service.SubscriptionTypeSubscription
+		}
+	}
+	subscription := &service.UserSubscription{
+		ID:        501,
+		UserID:    key.User.ID,
+		GroupID:   12,
+		Status:    service.SubscriptionStatusActive,
+		StartsAt:  time.Now().Add(-time.Hour),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+	resolver := &openAIFallbackSubscriptionResolverStub{subscription: subscription}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billing.Stop)
+	h := &OpenAIGatewayHandler{
+		billingCacheService:       billing,
+		fallbackSubscriptionStore: resolver,
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), key)
+	route := newOpenAIGPT54Route(key, nil, "gpt-5.4")
+
+	err := h.switchOpenAIGPT54Route(c, route, "grok_accounts_exhausted", false)
+	require.NoError(t, err)
+	require.True(t, route.switched())
+	require.Same(t, subscription, route.subscription())
+	require.Equal(t, []openAIFallbackSubscriptionCall{{userID: key.User.ID, groupID: 12}}, resolver.calls)
+
+	contextKey, ok := middleware2.GetAPIKeyFromContext(c)
+	require.True(t, ok)
+	require.Same(t, route.apiKey(), contextKey)
+	require.Equal(t, int64(12), *contextKey.GroupID)
+	contextGroup, ok := c.Request.Context().Value(ctxkey.Group).(*service.Group)
+	require.True(t, ok)
+	require.Equal(t, int64(12), contextGroup.ID)
+}
+
+func TestGPT54GrokFirstRouteHandlerSubscriptionFailureDoesNotSwitch(t *testing.T) {
+	t.Parallel()
+
+	key := gpt54RouteTestAPIKey(service.PlatformGrok, false)
+	for i := range key.Groups {
+		if key.Groups[i].Platform == service.PlatformOpenAI {
+			key.Groups[i].SubscriptionType = service.SubscriptionTypeSubscription
+		}
+	}
+	resolverErr := context.DeadlineExceeded
+	resolver := &openAIFallbackSubscriptionResolverStub{err: resolverErr}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billing.Stop)
+	h := &OpenAIGatewayHandler{
+		billingCacheService:       billing,
+		fallbackSubscriptionStore: resolver,
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	route := newOpenAIGPT54Route(key, nil, "gpt-5.4")
+
+	err := h.switchOpenAIGPT54Route(c, route, "grok_accounts_exhausted", false)
+	require.ErrorIs(t, err, resolverErr)
+	require.False(t, route.switched())
+	require.Same(t, key, route.apiKey())
+}
+
+type openAIFallbackSubscriptionCall struct {
+	userID  int64
+	groupID int64
+}
+
+type openAIFallbackSubscriptionResolverStub struct {
+	subscription *service.UserSubscription
+	err          error
+	calls        []openAIFallbackSubscriptionCall
+}
+
+func (s *openAIFallbackSubscriptionResolverStub) GetActiveSubscription(_ context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+	s.calls = append(s.calls, openAIFallbackSubscriptionCall{userID: userID, groupID: groupID})
+	return s.subscription, s.err
+}
+
 func gpt54RouteTestAPIKey(primaryPlatform string, ambiguousOpenAI bool, onlyPlatforms ...string) *service.APIKey {
 	primaryID := int64(11)
 	primary := service.Group{ID: primaryID, Name: "primary", Platform: primaryPlatform, Status: service.StatusActive}
@@ -134,7 +235,7 @@ func gpt54RouteTestAPIKey(primaryPlatform string, ambiguousOpenAI bool, onlyPlat
 		if platform == primaryPlatform {
 			continue
 		}
-		groups = append(groups, service.Group{ID: 12, Name: "fallback", Platform: platform, Status: service.StatusActive})
+		groups = append(groups, service.Group{ID: 12, Name: "fallback", Platform: platform, Status: service.StatusActive, AllowMessagesDispatch: platform == service.PlatformOpenAI})
 	}
 	if ambiguousOpenAI {
 		groups = append(groups,
