@@ -156,7 +156,7 @@ mappings:
 ```text
 grok-4.5        -> grok-4.5
 claude-opus-4-8 -> grok-4.5
-gpt-5.4         -> grok-4.5
+gpt-5.2         -> grok-4.5
 ```
 
 The direct mapping is required because explicit account mappings also act as

@@ -55,7 +55,7 @@ describe('useModelWhitelist', () => {
 
     expect(defaults.modelMappings).toEqual([
       { from: 'claude-opus-4-8', to: 'grok-4.5' },
-      { from: 'gpt-5.4', to: 'grok-4.5' }
+      { from: 'gpt-5.2', to: 'grok-4.5' }
     ])
     expect(defaults.allowedModels).toContain('grok-4.5')
 
@@ -68,7 +68,7 @@ describe('useModelWhitelist', () => {
     expect(config).toEqual({
       modelMapping: {
         'claude-opus-4-8': 'grok-4.5',
-        'gpt-5.4': 'grok-4.5'
+        'gpt-5.2': 'grok-4.5'
       },
       modelMappingFallbacks: null
     })
