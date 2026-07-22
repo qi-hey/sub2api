@@ -29,27 +29,27 @@
 
 ### Task 1: Route State and Authorization
 
-- [ ] **Step 1: Write failing route-state tests**
+- [x] **Step 1: Write failing route-state tests**
 
 Add table tests proving that only normalized exact `gpt-5.4` with a Grok primary is eligible; direct `grok-*`, other `gpt-*`, nil groups, and an already selected OpenAI route are unchanged. Test that fallback resolution uses `service.ResolveAPIKeyRequestPlatform(source, service.PlatformOpenAI)`, rejects unbound/ambiguous groups, retains all original group bindings, and maintains independent failed-account/retry maps.
 
-- [ ] **Step 2: Run the focused test and confirm RED**
+- [x] **Step 2: Run the focused test and confirm RED**
 
 Run: `go test ./internal/handler -run 'TestGPT54GrokFirstRoute' -count=1`
 
 Expected: FAIL because the route state and transition helpers do not exist.
 
-- [ ] **Step 3: Implement the minimum request-local state**
+- [x] **Step 3: Implement the minimum request-local state**
 
 Implement an unexported `openAIGPT54Route` with source/current API keys, current subscription/platform, separate Grok/OpenAI attempt state, switched flag, output-started guard, primary error, and fallback reason. Implement a one-way transition that resolves only an active OpenAI group bound to the same API key and never mutates the authenticated key.
 
-- [ ] **Step 4: Run the focused test and confirm GREEN**
+- [x] **Step 4: Run the focused test and confirm GREEN**
 
 Run: `go test ./internal/handler -run 'TestGPT54GrokFirstRoute' -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add backend/internal/handler/openai_gpt54_grok_fallback.go backend/internal/handler/openai_gpt54_grok_fallback_test.go
@@ -58,27 +58,27 @@ git commit -m "feat: add gpt-5.4 grok-first route state"
 
 ### Task 2: Sticky Continuity and Route-Switch Billing
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Add tests proving that an eligible OpenAI sticky session or valid OpenAI `previous_response_id` binding selects the fallback route before Grok; stale, disabled, wrong-group, wrong-model, and missing bindings do not. Extend RPM tests with a counting cache: normal eligibility increments `(user, Grok group)` and user RPM once; route-switch eligibility increments only `(user, OpenAI group)` and never increments user RPM again.
 
-- [ ] **Step 2: Run the focused tests and confirm RED**
+- [x] **Step 2: Run the focused tests and confirm RED**
 
 Run: `go test ./internal/service -run 'TestOpenAIGatewayHasRouteContinuity|TestBillingCacheRouteSwitch' -count=1`
 
 Expected: FAIL because the continuity and route-switch billing APIs do not exist.
 
-- [ ] **Step 3: Implement sticky detection and billing separation**
+- [x] **Step 3: Implement sticky detection and billing separation**
 
 Expose a service method that checks a group-scoped session sticky and `previous_response_id` binding using the existing eligibility, capability, quota-pause, and group-membership rules. Refactor `checkRPM` into group and user portions while preserving `CheckBillingEligibility`; add `CheckBillingEligibilityForRouteSwitch` that repeats balance/subscription/platform/API-key eligibility and destination-group RPM checks but skips the user-global RPM increment.
 
-- [ ] **Step 4: Run service tests and confirm GREEN**
+- [x] **Step 4: Run service tests and confirm GREEN**
 
 Run: `go test ./internal/service -run 'TestOpenAIGatewayHasRouteContinuity|TestBillingCacheRouteSwitch|TestBillingCache.*RPM' -count=1`
 
 Expected: PASS with exact counter assertions.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add backend/internal/service/openai_gateway_scheduling.go backend/internal/service/openai_ws_forwarder_support.go backend/internal/service/openai_gateway_route_sticky_test.go backend/internal/service/billing_cache_service.go backend/internal/service/billing_cache_service_rpm_test.go
@@ -87,27 +87,27 @@ git commit -m "feat: preserve openai fallback route continuity"
 
 ### Task 3: HTTP Responses and Chat Completions
 
-- [ ] **Step 1: Write failing endpoint tests**
+- [x] **Step 1: Write failing endpoint tests**
 
 Build handler tests with one bound Grok group and one bound OpenAI group. Cover: healthy Grok wins; Grok `WaitPlan` never switches; no Grok candidates switches to OpenAI; all failover-eligible Grok attempts switch once; non-retryable 400, cancellation, billing rejection, and any written response do not switch; OpenAI unbound/ambiguous returns routing error; successful fallback records OpenAI group/subscription/account and binds OpenAI sticky state; non-`gpt-5.4` behavior is unchanged.
 
-- [ ] **Step 2: Run tests and confirm RED**
+- [x] **Step 2: Run tests and confirm RED**
 
 Run: `go test ./internal/handler -run 'TestGPT54GrokFirst(Responses|ChatCompletions)' -count=1`
 
 Expected: FAIL because both handlers currently terminate after Grok exhaustion.
 
-- [ ] **Step 3: Integrate the shared route into both loops**
+- [x] **Step 3: Integrate the shared route into both loops**
 
 Generate session identity before the first route billing check, restore a valid OpenAI fallback sticky route before scheduling, and recompute group channel mapping after a transition. On `ErrNoAvailableAccounts`, nil selection, or exhausted failover-eligible Grok attempts, transition only while the request is replayable and output has not started. Use current-route API key, group, platform, subscription, failed IDs, concurrency binding, cyber record, quota platform, usage input, and logs on every attempt.
 
-- [ ] **Step 4: Run tests and confirm GREEN**
+- [x] **Step 4: Run tests and confirm GREEN**
 
 Run: `go test ./internal/handler -run 'TestGPT54GrokFirst(Responses|ChatCompletions)' -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add backend/internal/handler/openai_gateway_handler.go backend/internal/handler/openai_chat_completions.go backend/internal/handler/openai_gpt54_grok_fallback_integration_test.go
@@ -116,27 +116,27 @@ git commit -m "feat: fallback gpt-5.4 http requests after grok exhaustion"
 
 ### Task 4: Messages Compatibility and Responses WebSocket
 
-- [ ] **Step 1: Add failing endpoint tests**
+- [x] **Step 1: Add failing endpoint tests**
 
 Add Messages tests for mapped `gpt-5.4 -> grok-4.5`, Grok wait/no-account/failover/non-retryable/output-started cases, and OpenAI group usage after fallback. Add WebSocket tests for Grok-first selection, busy Grok rejection without fallback, pre-frame 429/no-account transition, no transition after any client-visible frame, route-specific transport/capability, and restored OpenAI session continuity.
 
-- [ ] **Step 2: Run tests and confirm RED**
+- [x] **Step 2: Run tests and confirm RED**
 
 Run: `go test ./internal/handler -run 'TestGPT54GrokFirst(Messages|ResponsesWebSocket)' -count=1`
 
 Expected: FAIL because Messages and WebSocket still terminate within the Grok route.
 
-- [ ] **Step 3: Integrate route state into Messages and WebSocket**
+- [x] **Step 3: Integrate route state into Messages and WebSocket**
 
 Use the same transition API and current-route state. Messages must recompute its dispatch and channel mappings after switching. WebSocket may switch only before a downstream frame; Grok remains HTTP-SSE transport while fallback OpenAI recomputes WS transport and capability. Hook closures must capture current-route API key/subscription so every turn's billing and usage stay in the selected OpenAI group after fallback.
 
-- [ ] **Step 4: Run tests and confirm GREEN**
+- [x] **Step 4: Run tests and confirm GREEN**
 
 Run: `go test ./internal/handler -run 'TestGPT54GrokFirst(Messages|ResponsesWebSocket)' -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add backend/internal/handler/openai_gateway_handler.go backend/internal/handler/openai_gpt54_grok_fallback_integration_test.go
@@ -145,21 +145,21 @@ git commit -m "feat: extend gpt-5.4 grok fallback to messages and websocket"
 
 ### Task 5: Dependency Wiring and Downstream Documentation
 
-- [ ] **Step 1: Add a failing provider contract test**
+- [x] **Step 1: Add a failing provider contract test**
 
 Update the existing Wire generation test to require `SubscriptionService` in `ProvideOpenAIGatewayHandler` and verify the handler receives it. Add a workflow assertion or documentation check covering the new customization.
 
-- [ ] **Step 2: Run tests and confirm RED**
+- [x] **Step 2: Run tests and confirm RED**
 
 Run: `go test ./cmd/server ./internal/handler -run 'TestWireGen|TestGPT54GrokFirstDependency' -count=1`
 
 Expected: FAIL until the provider and generated graph are updated.
 
-- [ ] **Step 3: Wire the subscription dependency and document the customization**
+- [x] **Step 3: Wire the subscription dependency and document the customization**
 
 Add the narrow subscription resolver field, inject the existing `SubscriptionService` in `ProvideOpenAIGatewayHandler`, run `wire`/the repository generator to update `wire_gen.go`, and append the exact fallback rules plus upgrade acceptance checklist to `PRIVACYFILTER_WORKFLOW.md`.
 
-- [ ] **Step 4: Run focused packages and confirm GREEN**
+- [x] **Step 4: Run focused packages and confirm GREEN**
 
 Run: `go test ./cmd/server ./internal/handler ./internal/service -count=1`
 
@@ -208,4 +208,3 @@ With the existing CC Switch API key, verify a normal new `gpt-5.4` session selec
 git add -f docs/superpowers/<build-and-deployment-records>
 git commit -m "docs: record gpt-5.4 grok-first deployment"
 ```
-

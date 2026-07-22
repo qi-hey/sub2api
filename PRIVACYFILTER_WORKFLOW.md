@@ -179,6 +179,56 @@ Upgrade acceptance checklist:
   direct `grok-4.5` scheduler eligibility.
 - Existing single-group API keys retain their original behavior.
 
+### GPT-5.4 Grok-first bound-group fallback
+
+Exact `gpt-5.4` requests use the API key's bound Grok group first, where the
+existing account mapping sends the request upstream as `grok-4.5`. If the Grok
+route is conclusively unavailable before client-visible output starts, the
+same request may switch once to the same API key's uniquely bound OpenAI group.
+It never searches globally available groups or accounts.
+
+Normal Grok concurrency waiting does not trigger fallback. Fallback is allowed
+only after no schedulable Grok account remains, or after failover-eligible Grok
+credential, entitlement, rate-limit, transport, or upstream-server errors have
+exhausted the Grok route. Invalid client requests, billing or permission
+rejections, cancellation, and requests that already emitted HTTP/SSE/WebSocket
+output do not switch groups.
+
+The route switch uses a request-local API key copy. The OpenAI group's
+subscription, group RPM, scheduler, account slots, channel mapping, security
+policy, sticky session, quota platform, usage record, and operations context
+must all use that copy. The authenticated cached key remains unchanged. The
+user-global RPM counter is not incremented a second time during a mid-request
+route switch.
+
+A successful OpenAI fallback binds the existing session hash or
+`previous_response_id` to the OpenAI group. Later requests in that context
+restore OpenAI before billing and scheduling, even if Grok becomes healthy
+again. Failed fallback attempts do not create continuity bindings.
+
+This customization covers:
+
+- `/v1/responses` over HTTP;
+- `/v1/chat/completions`;
+- the `/v1/messages` compatibility bridge;
+- Responses WebSocket ingress before its first downstream frame.
+
+Upgrade acceptance checklist:
+
+- A healthy Grok account receives a new exact `gpt-5.4` request first and maps
+  it to `grok-4.5`.
+- A Grok account wait plan waits or rejects normally without attempting OpenAI.
+- No Grok candidate and exhausted failover-eligible Grok errors switch once to
+  the uniquely bound OpenAI group.
+- Grok `400`, client cancellation, billing rejection, and started output never
+  switch groups.
+- Missing or ambiguous OpenAI bindings fail without accessing another group.
+- OpenAI fallback usage, subscription, concurrency, policy, quota, and logs use
+  the OpenAI group ID.
+- A successful fallback session remains on OpenAI on its next request.
+- Other models preserve deterministic multi-group routing.
+- HTTP Responses, Chat Completions, Messages, and Responses WebSocket tests pass.
+
 ### Grok Forbidden account maintenance
 
 The account status filter includes a downstream-only `forbidden` value for
