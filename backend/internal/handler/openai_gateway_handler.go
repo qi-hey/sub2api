@@ -407,6 +407,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 		forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 		seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
+		if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && !decision.AllowNextStage {
+			h.openAISecurityAuditError(c, decision)
+			return
+		}
 	}
 
 	// 2. Re-check billing eligibility after wait and route restoration.
@@ -458,6 +462,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
 		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 		forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+		if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && !decision.AllowNextStage {
+			h.openAISecurityAuditError(c, decision)
+			return false
+		}
 		reqLog.Info("openai.gpt54_grok_fallback_switched",
 			zap.String("reason", reason),
 			zap.Any("fallback_group_id", apiKey.GroupID),
@@ -658,16 +666,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						if route.canFallback() && switchToOpenAIFallback("grok_failover_budget_exhausted") {
-							continue
+						if route.canFallback() {
+							if switchToOpenAIFallback("grok_failover_budget_exhausted") {
+								continue
+							}
+							return
 						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
-						if route.canFallback() && switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
-							continue
+						if route.canFallback() {
+							if switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
+								continue
+							}
+							return
 						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
@@ -1043,6 +1057,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		requestPlatform = route.platform()
 		preferredMappedModel = resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
 		channelMappingMsg, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+		if !allowOpenAICompatibleMessagesDispatch(apiKey) {
+			h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error", "The OpenAI fallback group does not allow /v1/messages dispatch")
+			return
+		}
+		if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && !decision.AllowNextStage {
+			h.anthropicSecurityAuditError(c, decision)
+			return
+		}
 	}
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
@@ -1087,6 +1109,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		preferredMappedModel = resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
 		effectiveMappedModel = preferredMappedModel
 		channelMappingMsg, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+		if !allowOpenAICompatibleMessagesDispatch(apiKey) {
+			h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error", "The OpenAI fallback group does not allow /v1/messages dispatch")
+			return false
+		}
+		if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && !decision.AllowNextStage {
+			h.anthropicSecurityAuditError(c, decision)
+			return false
+		}
 		reqLog.Info("openai_messages.gpt54_grok_fallback_switched",
 			zap.String("reason", reason),
 			zap.Any("fallback_group_id", apiKey.GroupID),
@@ -1268,16 +1298,22 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						if route.canFallback() && switchToOpenAIFallback("grok_failover_budget_exhausted") {
-							continue
+						if route.canFallback() {
+							if switchToOpenAIFallback("grok_failover_budget_exhausted") {
+								continue
+							}
+							return
 						}
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
-						if route.canFallback() && switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
-							continue
+						if route.canFallback() {
+							if switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
+								continue
+							}
+							return
 						}
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
@@ -1799,6 +1835,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		requestPlatform = route.platform()
 		ctx = c.Request.Context()
 		channelMappingWS, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
+		if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage, "fallback_route_restore"); decision != nil && !decision.AllowNextStage {
+			writeSecurityAuditWSError(ctx, wsConn, decision)
+			closeOpenAIClientWS(wsConn, securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision))
+			return
+		}
 	}
 	requiredTransport := service.OpenAIUpstreamTransportResponsesWebsocketV2Ingress
 	if requestPlatform == service.PlatformGrok {
@@ -1834,16 +1875,22 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		failedAccountIDs[account.ID] = struct{}{}
 		lastFailoverErr = failoverErr
 		if switchCount >= maxAccountSwitches {
-			if route.canFallback() && switchToOpenAIFallback != nil && switchToOpenAIFallback("grok_failover_budget_exhausted") {
-				return ensureUserSlotHeld()
+			if route.canFallback() {
+				if switchToOpenAIFallback != nil && switchToOpenAIFallback("grok_failover_budget_exhausted") {
+					return ensureUserSlotHeld()
+				}
+				return false
 			}
 			closeOpenAIWSFailoverExhausted(wsConn, failoverErr)
 			return false
 		}
 		switchCount++
 		if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
-			if route.canFallback() && switchToOpenAIFallback != nil && switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
-				return ensureUserSlotHeld()
+			if route.canFallback() {
+				if switchToOpenAIFallback != nil && switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
+					return ensureUserSlotHeld()
+				}
+				return false
 			}
 			closeOpenAIWSFailoverExhausted(wsConn, failoverErr)
 			return false
@@ -1872,12 +1919,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		apiKey = route.apiKey()
 		subscription = route.subscription()
 		requestPlatform = route.platform()
+		ctx = c.Request.Context()
 		failedAccountIDs = route.failedAccountIDs()
 		switchCount = 0
 		lastFailoverErr = nil
 		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
 		requiredTransport = service.OpenAIUpstreamTransportResponsesWebsocketV2Ingress
 		channelMappingWS, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
+		if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage, "fallback_route_switch"); decision != nil && !decision.AllowNextStage {
+			writeSecurityAuditWSError(ctx, wsConn, decision)
+			closeOpenAIClientWS(wsConn, securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision))
+			return false
+		}
 		reqLog.Info("openai.websocket_gpt54_grok_fallback_switched",
 			zap.String("reason", reason),
 			zap.Any("fallback_group_id", apiKey.GroupID),

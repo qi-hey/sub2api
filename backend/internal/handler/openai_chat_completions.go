@@ -146,6 +146,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		subscription = route.subscription()
 		requestPlatform = route.platform()
 		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+		if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && !decision.AllowNextStage {
+			h.openAISecurityAuditError(c, decision)
+			return
+		}
 	}
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
@@ -183,6 +187,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		lastFailoverErr = nil
 		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
 		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+		if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && !decision.AllowNextStage {
+			h.openAISecurityAuditError(c, decision)
+			return false
+		}
 		reqLog.Info("openai_chat_completions.gpt54_grok_fallback_switched",
 			zap.String("reason", reason),
 			zap.Any("fallback_group_id", apiKey.GroupID),
@@ -348,16 +356,22 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						if route.canFallback() && switchToOpenAIFallback("grok_failover_budget_exhausted") {
-							continue
+						if route.canFallback() {
+							if switchToOpenAIFallback("grok_failover_budget_exhausted") {
+								continue
+							}
+							return
 						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
-						if route.canFallback() && switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
-							continue
+						if route.canFallback() {
+							if switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
+								continue
+							}
+							return
 						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
