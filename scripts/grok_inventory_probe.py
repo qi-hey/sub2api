@@ -126,15 +126,18 @@ class APIClient:
             category = "rate_limited"
         elif status == 200:
             category = "ok"
-        elif status == 403:
+        elif status >= 400:
             schedulable = self.account_schedulable(account_id)
-            category = "forbidden_disabled" if schedulable is False else "forbidden_not_disabled"
+            if schedulable is False:
+                category = "unavailable_disabled"
+            elif status >= 500:
+                category = "upstream_or_server_error"
+            elif status == 401:
+                category = "auth_error"
+            else:
+                category = "other_error"
         elif status == 0:
             category = "timeout_or_network"
-        elif status >= 500:
-            category = "upstream_or_server_error"
-        elif status == 401:
-            category = "auth_error"
         else:
             category = "other_error"
 
@@ -242,12 +245,12 @@ def main():
                             "completed": completed,
                             "total": len(target_ids),
                             "ok": counts["ok"],
-                            "forbidden_disabled": counts["forbidden_disabled"],
+                            "unavailable_disabled": counts["unavailable_disabled"],
                             "rate_limited": counts["rate_limited"],
                             "errors": sum(
                                 count
                                 for key, count in counts.items()
-                                if key not in ("ok", "forbidden_disabled", "rate_limited")
+                                if key not in ("ok", "unavailable_disabled", "rate_limited")
                             ),
                             "eta_seconds": round(eta),
                         }

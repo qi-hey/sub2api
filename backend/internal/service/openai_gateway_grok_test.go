@@ -2162,6 +2162,35 @@ func TestHandleGrokAccountUpstreamErrorDisablesChatPermissionDenied(t *testing.T
 	require.Equal(t, "upstream_response", snapshot.ObservationSource)
 }
 
+func TestHandleGrokAccountUpstreamErrorDisablesPaymentRequired(t *testing.T) {
+	account := &Account{
+		ID:          71,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusPaymentRequired, http.Header{}, nil)
+
+	require.Equal(t, 1, repo.schedulableCalls)
+	require.Equal(t, account.ID, repo.lastSchedulableID)
+	require.False(t, repo.lastSchedulable)
+	require.False(t, account.Schedulable)
+	require.Zero(t, repo.tempUnschedCalls)
+
+	snapshot, ok := repo.updates[account.ID][grokQuotaSnapshotExtraKey].(*xai.QuotaSnapshot)
+	require.True(t, ok)
+	require.Equal(t, http.StatusPaymentRequired, snapshot.StatusCode)
+	require.Equal(t, "upstream_response", snapshot.ObservationSource)
+}
+
 func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testing.T) {
 	account := &Account{ID: 61, Platform: PlatformGrok, Type: AccountTypeOAuth}
 	repo := &grokQuotaAccountRepo{}

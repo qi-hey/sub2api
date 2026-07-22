@@ -195,18 +195,26 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	if resp.StatusCode >= 400 {
 		const reason = "GROK_QUOTA_PROBE_UPSTREAM_ERROR"
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		if account.Schedulable && isGrokChatPermissionDenied(resp.StatusCode, responseBody) {
+		if disableReason := grokPermanentUnschedulableReason(resp.StatusCode, responseBody); account.Schedulable && disableReason != "" {
+			disableFailedEvent := "grok_chat_permission_denied_disable_failed"
+			disabledEvent := "grok_chat_permission_denied_disabled"
+			if disableReason == "payment_required" {
+				disableFailedEvent = "grok_payment_required_disable_failed"
+				disabledEvent = "grok_payment_required_disabled"
+			}
 			if err := s.accountRepo.SetSchedulable(ctx, account.ID, false); err != nil {
 				slog.Warn(
-					"grok_chat_permission_denied_disable_failed",
+					disableFailedEvent,
 					"account_id", account.ID,
+					"reason", disableReason,
 					"error", err,
 				)
 			} else {
 				slog.Warn(
-					"grok_chat_permission_denied_disabled",
+					disabledEvent,
 					"account_id", account.ID,
 					"model", probeModel,
+					"reason", disableReason,
 				)
 			}
 		}
@@ -226,6 +234,16 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 		)
 	}
 	return result, nil
+}
+
+func grokPermanentUnschedulableReason(statusCode int, body []byte) string {
+	if statusCode == http.StatusPaymentRequired {
+		return "payment_required"
+	}
+	if isGrokChatPermissionDenied(statusCode, body) {
+		return "chat_permission_denied"
+	}
+	return ""
 }
 
 func isGrokChatPermissionDenied(statusCode int, body []byte) bool {

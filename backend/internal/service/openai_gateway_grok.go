@@ -1125,22 +1125,30 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 	if s == nil || account == nil {
 		return
 	}
-	if isGrokChatPermissionDenied(statusCode, responseBody) {
+	if disableReason := grokPermanentUnschedulableReason(statusCode, responseBody); disableReason != "" {
 		stateCtx, cancel := openAIAccountStateContext(ctx)
 		defer cancel()
+		snapshotFailedEvent := "grok_chat_permission_denied_snapshot_failed"
+		disableFailedEvent := "grok_chat_permission_denied_disable_failed"
+		disabledEvent := "grok_chat_permission_denied_disabled"
+		if disableReason == "payment_required" {
+			snapshotFailedEvent = "grok_payment_required_snapshot_failed"
+			disableFailedEvent = "grok_payment_required_disable_failed"
+			disabledEvent = "grok_payment_required_disabled"
+		}
 
 		snapshot := xai.ObserveQuotaHeaders(headers, statusCode, "upstream_response")
 		if s.accountRepo != nil {
 			if err := s.accountRepo.UpdateExtra(stateCtx, account.ID, map[string]any{
 				grokQuotaSnapshotExtraKey: snapshot,
 			}); err != nil {
-				slog.Warn("grok_chat_permission_denied_snapshot_failed", "account_id", account.ID, "error", err)
+				slog.Warn(snapshotFailedEvent, "account_id", account.ID, "reason", disableReason, "error", err)
 			}
 			if account.Schedulable {
 				if err := s.accountRepo.SetSchedulable(stateCtx, account.ID, false); err != nil {
-					slog.Warn("grok_chat_permission_denied_disable_failed", "account_id", account.ID, "error", err)
+					slog.Warn(disableFailedEvent, "account_id", account.ID, "reason", disableReason, "error", err)
 				} else {
-					slog.Warn("grok_chat_permission_denied_disabled", "account_id", account.ID, "source", "upstream_response")
+					slog.Warn(disabledEvent, "account_id", account.ID, "source", "upstream_response", "reason", disableReason)
 				}
 			}
 		}

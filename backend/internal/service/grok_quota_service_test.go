@@ -370,6 +370,35 @@ func TestGrokQuotaServiceProbeUsageDisablesSchedulingOnChatPermissionDenied(t *t
 	require.Equal(t, http.StatusForbidden, snapshot.StatusCode)
 }
 
+func TestGrokQuotaServiceProbeUsageDisablesSchedulingOnPaymentRequired(t *testing.T) {
+	t.Parallel()
+
+	account := healthyGrokQuotaOAuthAccount(52)
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusPaymentRequired,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`{"error":"subscription or credits required"}`)),
+	}}
+	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
+
+	_, err := svc.ProbeUsage(context.Background(), account.ID)
+	require.Error(t, err)
+	require.Equal(t, "GROK_QUOTA_PROBE_UPSTREAM_ERROR", infraerrors.Reason(err))
+	require.Equal(t, 1, repo.schedulableCalls)
+	require.Equal(t, account.ID, repo.lastSchedulableID)
+	require.False(t, repo.lastSchedulable)
+	require.False(t, account.Schedulable)
+
+	snapshot, ok := repo.updates[account.ID][grokQuotaSnapshotExtraKey].(*xai.QuotaSnapshot)
+	require.True(t, ok)
+	require.Equal(t, http.StatusPaymentRequired, snapshot.StatusCode)
+}
+
 func TestGrokQuotaServiceProbeUsageKeepsSchedulingOnAmbiguousForbidden(t *testing.T) {
 	t.Parallel()
 
