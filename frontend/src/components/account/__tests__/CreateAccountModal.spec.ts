@@ -155,7 +155,7 @@ describe('CreateAccountModal default group selection', () => {
     expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([])
   })
 
-  it('selects Grok groups and restores the two Grok mappings on platform return', async () => {
+  it('selects Grok groups and restores the Grok mappings on platform return', async () => {
     const wrapper = mountModal({ groups: selectableGroups, simpleMode: false })
     await flushPromises()
 
@@ -164,8 +164,9 @@ describe('CreateAccountModal default group selection', () => {
 
     expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([12])
     expect(readVisibleModelMappings(wrapper)).toEqual([
+      ['grok-4.5', 'grok-4.5'],
       ['claude-opus-4-8', 'grok-4.5'],
-      ['gpt-5.4', 'grok-4.5'],
+      ['gpt-5.2', 'grok-4.5'],
     ])
 
     await selectButtonByText(wrapper, 'OpenAI')
@@ -173,8 +174,9 @@ describe('CreateAccountModal default group selection', () => {
 
     await selectButtonByText(wrapper, 'Grok')
     expect(readVisibleModelMappings(wrapper)).toEqual([
+      ['grok-4.5', 'grok-4.5'],
       ['claude-opus-4-8', 'grok-4.5'],
-      ['gpt-5.4', 'grok-4.5'],
+      ['gpt-5.2', 'grok-4.5'],
     ])
   })
 
@@ -195,8 +197,9 @@ describe('CreateAccountModal default group selection', () => {
       group_ids: [12],
       credentials: {
         model_mapping: {
+          'grok-4.5': 'grok-4.5',
           'claude-opus-4-8': 'grok-4.5',
-          'gpt-5.4': 'grok-4.5',
+          'gpt-5.2': 'grok-4.5',
         },
       },
     })

@@ -478,6 +478,7 @@ const defaultOpenAIModelMappings: ModelMappingEntry[] = [
 ]
 
 const defaultGrokModelMappings: ModelMappingEntry[] = [
+  { from: 'grok-4.5', to: 'grok-4.5' },
   { from: 'claude-opus-4-8', to: 'grok-4.5' },
   { from: 'gpt-5.2', to: 'grok-4.5' }
 ]

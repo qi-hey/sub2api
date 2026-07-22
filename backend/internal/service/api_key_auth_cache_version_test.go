@@ -78,7 +78,11 @@ func TestAPIKeyService_MultiGroupAuthSnapshotRoundTrip(t *testing.T) {
 			Enabled: true,
 			Models:  []string{"grok-4.5"},
 		},
-		RPMLimit: 120,
+		RPMLimit:           120,
+		MaxReasoningEffort: "high",
+		ReasoningEffortMappings: []ReasoningEffortMapping{
+			{From: "max", To: "high"},
+		},
 	}
 	defaultGroupID := defaultGroup.ID
 	apiKey := &APIKey{
@@ -103,7 +107,7 @@ func TestAPIKeyService_MultiGroupAuthSnapshotRoundTrip(t *testing.T) {
 	svc := &APIKeyService{}
 	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
 	require.NotNil(t, snapshot)
-	require.Equal(t, 16, snapshot.Version)
+	require.Equal(t, 17, snapshot.Version)
 
 	roundTrip, used, err := svc.applyAuthCacheEntry(apiKey.Key, &APIKeyAuthCacheEntry{Snapshot: snapshot})
 	require.NoError(t, err)
@@ -274,6 +278,24 @@ func TestAPIKeyService_RejectsV10AuthSnapshotWithoutModelsListConfig(t *testing.
 	}
 	if ok {
 		t.Fatalf("expected v10 auth snapshot to be rejected after models_list_config was added")
+	}
+	if apiKey != nil {
+		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)
+	}
+}
+
+func TestAPIKeyService_RejectsV15AuthSnapshotWithoutReasoningEffortPolicy(t *testing.T) {
+	svc := &APIKeyService{}
+
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-reasoning-mappings", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 15},
+	})
+
+	if err != nil {
+		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
+	}
+	if ok {
+		t.Fatal("expected v15 auth snapshot to be rejected after reasoning effort policy was added")
 	}
 	if apiKey != nil {
 		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)
