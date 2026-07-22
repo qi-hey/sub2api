@@ -246,6 +246,22 @@ reauthorized, or deleted by an administrator. Ambiguous 403 responses and 429
 rate limits must not permanently disable scheduling, and successful probes must
 not automatically re-enable accounts that were disabled manually.
 
+An xAI `402 Payment Required` response is also deterministic account
+unavailability. Active probes and live forwarding must set that account to
+`schedulable=false`, while preserving the account and credentials for later
+review. A `402` is not included in the Forbidden filter, which remains scoped
+to persisted `403` snapshots.
+
+Administrators can force a real chat-endpoint probe with
+`GET /api/v1/admin/grok/accounts/:id/quota?probe=active`. This bypasses the
+billing-probe short circuit and uses the same OAuth token, account proxy,
+headers, model, and Responses payload as live Grok traffic. The operational
+tool `scripts/grok_inventory_probe.py` applies this probe to every current
+`active + schedulable` Grok account with bounded concurrency, a single-run
+lock, JSONL details, and a JSON summary. It never deletes accounts or changes
+groups and credentials. Production reports are stored in
+`/opt/sub2api/probe-reports`.
+
 The filtered view exposes a protected "delete all Forbidden" action so cleanup
 is not limited to the current 20-row page. This action must retain all of the
 following safeguards:
@@ -277,6 +293,11 @@ Upgrade acceptance checklist:
   account through a temporary cooldown.
 - Ambiguous 403 responses and 429 rate limits do not permanently disable the
   account.
+- A 402 response disables scheduling in both active probes and live traffic.
+- A forced active probe always calls the xAI Responses endpoint even when the
+  billing endpoint reports authoritative quota data.
+- The inventory tool records successes, rate limits, deterministic disables,
+  and transient failures without deleting accounts.
 - Non-Grok accounts and Grok accounts without a 403 usage snapshot do not
   appear in this filter.
 - Success, count-change (HTTP 409), and partial-failure frontend tests pass.

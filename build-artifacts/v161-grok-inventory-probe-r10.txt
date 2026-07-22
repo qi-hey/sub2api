@@ -1,0 +1,45 @@
+version=0.1.161-custom-multigroup-r10
+source_commit=3173c5f8b
+upstream_tag=v0.1.161
+artifact=build/sub2api-0.1.161-custom-multigroup-r10-linux-amd64
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+size_bytes=111255714
+sha256=13d46bae1605b516c627e003dc7ed6527715b8bbd4d4937330574c3b032d4bcb
+
+features:
+- Admin quota endpoint supports probe=active to force a real xAI Responses probe.
+- Grok inventory tool scans active schedulable accounts with concurrency and reports.
+- Structured chat permission 403 responses remain permanent scheduling disables.
+- Payment Required 402 responses now disable scheduling in probes and live traffic.
+- Rate limit 429, ambiguous 403, timeouts, and upstream 5xx are not permanently disabled.
+- The inventory tool never deletes accounts or changes groups and credentials.
+
+verification:
+- Focused Grok quota handler unit tests passed.
+- Focused Grok quota and gateway upstream-state unit tests passed.
+- Full admin handler unit package passed.
+- Embedded frontend production build passed.
+- Python inventory tool syntax validation passed.
+
+deployment:
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=13d46bae1605b516c627e003dc7ed6527715b8bbd4d4937330574c3b032d4bcb
+- previous_version=0.1.161-custom-multigroup-r9
+- rollback_backup=/opt/sub2api/backups/sub2api_before_r10_20260722_075500
+- pre_scan_backup=/opt/sub2api/backups/sub2api_before_r9_20260722_074433
+- service_state=active/running
+- service_restarts_after_deploy=0
+- health_status=ok
+
+production_scan:
+- Initial live inventory: 3,079 Grok accounts.
+- Existing active schedulable candidates: 2,865.
+- Structured permission-denied probes disabled 2,848 candidates.
+- A separate authenticated admin bulk-delete request later soft-deleted those 2,848 rows.
+- Forced r10 probe disabled 14 Payment Required accounts.
+- Final live inventory: 231 accounts, including 1 immediately usable and 2 rate-limited candidates.
+- Rate-limited accounts 716 and 15076 remain schedulable and recover by reset time.
+- Final reports are under /opt/sub2api/probe-reports.
