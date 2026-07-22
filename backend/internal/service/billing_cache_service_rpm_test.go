@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -14,8 +15,10 @@ import (
 
 // userRPMCacheStub 记录每种计数器被调用的次数，并可注入返回值与错误。
 type userRPMCacheStub struct {
+	mu             sync.Mutex
 	userGroupCalls int32
 	userCalls      int32
+	userGroupIDs   []int64
 
 	userGroupCounts []int // 依次返回的计数值
 	userGroupErr    error
@@ -23,7 +26,10 @@ type userRPMCacheStub struct {
 	userErr         error
 }
 
-func (s *userRPMCacheStub) IncrementUserGroupRPM(_ context.Context, _, _ int64) (int, error) {
+func (s *userRPMCacheStub) IncrementUserGroupRPM(_ context.Context, _ int64, groupID int64) (int, error) {
+	s.mu.Lock()
+	s.userGroupIDs = append(s.userGroupIDs, groupID)
+	s.mu.Unlock()
 	idx := int(atomic.AddInt32(&s.userGroupCalls, 1)) - 1
 	if s.userGroupErr != nil {
 		return 0, s.userGroupErr
@@ -250,4 +256,22 @@ func TestBillingCacheService_CheckRPM_NilUserIsNoop(t *testing.T) {
 	require.EqualValues(t, 0, atomic.LoadInt32(&cache.userGroupCalls))
 	require.EqualValues(t, 0, atomic.LoadInt32(&cache.userCalls))
 	require.EqualValues(t, 0, atomic.LoadInt32(&repo.calls))
+}
+
+func TestBillingCacheRouteSwitchRPMCountsDestinationGroupWithoutDoubleCountingUser(t *testing.T) {
+	cache := &userRPMCacheStub{}
+	repo := &rpmOverrideRepoStub{override: nil}
+	svc := newBillingServiceForRPM(t, cache, repo)
+	user := &User{ID: 1, RPMLimit: 100}
+	primary := &Group{ID: 11, RPMLimit: 100}
+	fallback := &Group{ID: 12, RPMLimit: 100}
+
+	require.NoError(t, svc.checkRPM(context.Background(), user, primary))
+	require.NoError(t, svc.checkRouteSwitchRPM(context.Background(), user, fallback))
+
+	require.EqualValues(t, 2, atomic.LoadInt32(&cache.userGroupCalls))
+	require.EqualValues(t, 1, atomic.LoadInt32(&cache.userCalls))
+	cache.mu.Lock()
+	require.Equal(t, []int64{primary.ID, fallback.ID}, append([]int64(nil), cache.userGroupIDs...))
+	cache.mu.Unlock()
 }

@@ -145,6 +145,49 @@ func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, groupID *i
 	return s.setStickySessionAccountID(ctx, groupID, sessionHash, accountID, ttl)
 }
 
+// HasOpenAIRouteContinuity reports whether an OpenAI group owns an existing,
+// still-schedulable session or previous-response binding for this request.
+// It does not search outside groupID.
+func (s *OpenAIGatewayService) HasOpenAIRouteContinuity(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	previousResponseID string,
+	requestedModel string,
+	requiredCapability OpenAIEndpointCapability,
+	requireCompact bool,
+) bool {
+	if s == nil {
+		return false
+	}
+	if strings.TrimSpace(previousResponseID) != "" &&
+		s.ResolveAccountIDByPreviousResponseIDForScheduler(
+			ctx,
+			groupID,
+			previousResponseID,
+			requestedModel,
+			nil,
+			requiredCapability,
+			requireCompact,
+		) > 0 {
+		return true
+	}
+	if strings.TrimSpace(sessionHash) == "" {
+		return false
+	}
+	return s.tryStickySessionHit(
+		ctx,
+		groupID,
+		PlatformOpenAI,
+		sessionHash,
+		requestedModel,
+		nil,
+		requireCompact,
+		0,
+		requiredCapability,
+	) != nil
+}
+
 // SelectAccount selects an OpenAI account with sticky session support
 func (s *OpenAIGatewayService) SelectAccount(ctx context.Context, groupID *int64, sessionHash string) (*Account, error) {
 	return s.SelectAccountForModel(ctx, groupID, sessionHash, "")
