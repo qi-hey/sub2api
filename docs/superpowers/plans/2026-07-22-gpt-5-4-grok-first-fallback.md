@@ -165,7 +165,7 @@ Run: `go test ./cmd/server ./internal/handler ./internal/service -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add backend/internal/handler/wire.go backend/cmd/server/wire_gen.go backend/cmd/server/wire_gen_test.go PRIVACYFILTER_WORKFLOW.md
@@ -174,7 +174,7 @@ git commit -m "docs: retain gpt-5.4 grok-first fallback customization"
 
 ### Task 6: Full Verification, Build, and VPS Deployment
 
-- [ ] **Step 1: Format and run backend verification**
+- [x] **Step 1: Format and run backend verification**
 
 Run: `gofmt -w <all changed Go files>`
 
@@ -184,25 +184,25 @@ Run: `go test ./... -count=1`
 
 Expected: all commands exit 0.
 
-- [ ] **Step 2: Run frontend/customization regression checks**
+- [x] **Step 2: Run frontend/customization regression checks**
 
 Run the repository's documented frontend test and build commands, including model defaults, multi-group keys, Grok defaults, Forbidden cleanup, and `openai_passthrough` coverage.
 
 Expected: all commands exit 0 and no required v161 customization regresses.
 
-- [ ] **Step 3: Build production artifacts and record provenance**
+- [x] **Step 3: Build production artifacts and record provenance**
 
 Use the v161 `PRIVACYFILTER_WORKFLOW.md` build procedure. Record source HEAD, dirty state, toolchain versions, artifact hashes, and included downstream features. Never include secrets, database dumps, or production tokens.
 
-- [ ] **Step 4: Deploy to the US VPS with rollback protection**
+- [x] **Step 4: Deploy to the US VPS with rollback protection**
 
 Using `us_ssh`, capture the running version and health, back up the current binary/image and service configuration, upload the verified artifact, restart only the Sub2API service, and wait for readiness. If readiness fails, restore the backup immediately.
 
-- [ ] **Step 5: Run production smoke tests**
+- [x] **Step 5: Run production smoke tests**
 
 With the existing CC Switch API key, verify a normal new `gpt-5.4` session selects Grok and maps upstream to `grok-4.5`. Temporarily make all Grok accounts unschedulable without deleting or editing credentials, verify a new session selects the key-bound OpenAI group, then restore the original Grok states. Confirm a successful fallback session remains on OpenAI, billing/usage/log group IDs match the actual route, and other models are unchanged.
 
-- [ ] **Step 6: Commit build and deployment records**
+- [x] **Step 6: Commit build and deployment records**
 
 ```powershell
 git add -f docs/superpowers/<build-and-deployment-records>

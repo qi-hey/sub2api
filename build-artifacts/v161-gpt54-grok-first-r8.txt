@@ -1,0 +1,58 @@
+version=0.1.161-custom-multigroup-r8
+source_commit=6eb3d3adca755ed99e387c57130e74b261601415
+upstream_tag=v0.1.161
+artifact=build/sub2api-0.1.161-custom-multigroup-r8-linux-amd64
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+built_at_utc=2026-07-22T03:56:37Z
+size_bytes=111255714
+sha256=c242a1c0524b03b1fa86da6ca34b89c45c9cf1f0f8dad037805bec15828baa98
+
+features:
+- Exact gpt-5.4 requests resolve the API key's bound Grok group first.
+- Grok requests map gpt-5.4 to grok-4.5 through existing account mappings.
+- Eligible Grok exhaustion switches once to the same API key's bound OpenAI group.
+- WaitPlan, non-retryable 400, billing rejection, cancellation, and started output do not switch.
+- A session that successfully falls back remains sticky to OpenAI.
+- Responses, Chat Completions, Messages compatibility, and Responses WebSocket are covered.
+- Route switching preserves destination group billing, RPM, security policy, usage, and logs.
+- The user-global RPM counter is not incremented twice during a route switch.
+
+verification:
+- GPT-5.4 focused handler and service tests passed.
+- Handler unit test suite passed.
+- Frontend lint, typecheck, 1243 Vitest tests, and production build passed.
+- Local WebSocket end-to-end fallback test passed.
+- The broad backend run had one pre-existing flaky timeout:
+  TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig.
+- The flaky test is outside the changed files and also failed 2/3 isolated reruns.
+- Linux/amd64 embedded frontend build passed.
+
+deployment:
+- deployed_at_utc=2026-07-22T04:03:14Z
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=c242a1c0524b03b1fa86da6ca34b89c45c9cf1f0f8dad037805bec15828baa98
+- previous_version=0.1.161-custom-multigroup-r7
+- previous_sha256=e1d40b21dc8634aca8e04b739a5435b03ccb1f9dcc9486e8954686afea60c50a
+- rollback_backup=/opt/sub2api/backups/sub2api_before_r8_20260722_035733
+- database_backup=/opt/sub2api/backups/sub2api_before_r8_20260722_035733/database.dump
+- database_backup_pg_restore_list=passed
+- config_and_systemd_backup=passed
+- service_state=active/running
+- service_restarts_after_deploy=0
+- health_status=ok
+
+production_smoke:
+- CC Switch API key binding remained groups 2 (OpenAI), 11 (Claude), and 12 (Grok).
+- New gpt-5.4 requests entered Grok group 12 first.
+- The current sampled Grok accounts returned upstream 403, including account 19711,
+  which had last succeeded at 2026-07-22T02:48:30Z with gpt-5.4 -> grok-4.5.
+- After ten eligible Grok failures, the request switched with reason
+  grok_failover_budget_exhausted to OpenAI group 2 and completed with HTTP 200.
+- Persisted usage recorded group 2, OpenAI account 19794, and gpt-5.4 -> gpt-5.5.
+- A second request with the same session completed on OpenAI group 2 without any
+  Grok failover attempts, confirming one-way fallback continuity.
+- Concurrent live gpt-5.6-sol traffic remained on OpenAI group 2.
+- No account credentials, API keys, or group bindings were edited by deployment.
