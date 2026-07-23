@@ -1,0 +1,43 @@
+version=0.1.163-r12
+source_commit=8eeef87dd006dfbc58cc0943993321f705b6734e
+upstream_tag=v0.1.163
+artifact=build/sub2api-0.1.163-r12-linux-amd64
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+size_bytes=111464610
+sha256=7477bf143eeb45a1e4aa9ca2f184a75f8558930f79e405784176288dbc8d881b
+
+features:
+- OpenAI-compatible gpt-5.2, gpt-5.4, gpt-5.4-mini, gpt-5.5, gpt-5.6-luna, gpt-5.6-sol, and gpt-5.6-terra requests route to OpenAI first.
+- After the OpenAI route is unavailable, a request may switch once to the same API key's uniquely bound active Grok group.
+- API keys without an active Grok binding preserve the original OpenAI error and never search global Grok accounts.
+- New and existing Grok accounts map all seven aliases to grok-4.5 without overwriting explicit existing values.
+- HTTP Responses, Chat Completions, Messages compatibility, and Responses WebSocket ingress share the fallback behavior.
+
+verification:
+- go test -tags unit ./internal/handler passed.
+- go test -tags unit ./internal/service passed.
+- go test -tags unit ./migrations passed.
+- Frontend Grok default tests passed: 39 tests.
+- Frontend production build passed.
+- Linux/amd64 embedded binary build passed.
+- Migration 186 applied successfully; 548 of 548 active Grok accounts contain all seven mappings.
+
+deployment:
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=7477bf143eeb45a1e4aa9ca2f184a75f8558930f79e405784176288dbc8d881b
+- previous_version=0.1.163-r11
+- previous_sha256=7c43ac7b3c82dd0e692b9d8768c44859242ad0258a2b502cd474880c84a8d869
+- rollback_backup=/opt/sub2api/backups/sub2api_before_0.1.163-r12_20260723_155144
+- service_state=active/running
+- service_restarts_after_deploy=0
+- public_health=https://sub.hey77.uk/
+
+production_route_checks:
+- API key 2 bindings are OpenAI group 2, Anthropic group 11, and Grok group 12.
+- A healthy gpt-5.6-sol request remained on OpenAI group 2.
+- Bound-key gpt-5.2 test switched from unavailable OpenAI group 2 to Grok group 12 and returned HTTP 200.
+- Its usage row records requested_model=gpt-5.2 and upstream_model=grok-4.5.
+- Unbound API key 1 returned HTTP 404 model_not_found for gpt-5.2 and emitted no Grok fallback event.
