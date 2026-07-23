@@ -374,7 +374,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Get subscription info (may be nil)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(apiKey)
-	route := newOpenAIGPT54Route(apiKey, subscription, reqModel)
+	route := newOpenAIToGrokFallbackRoute(apiKey, subscription, reqModel)
+	markOpenAIToGrokFallbackEligibility(c, route)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
@@ -392,7 +393,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
 	requireCompact := isOpenAIRemoteCompactPath(c)
 	requiredCapability := openAIResponsesRequiredCapability(imageIntent, requestPlatform)
-	restoredOpenAI, restoreErr := h.restoreOpenAIGPT54RouteContinuity(
+	restoredGrok, restoreErr := h.restoreOpenAIToGrokFallbackContinuity(
 		c,
 		route,
 		sessionHash,
@@ -401,7 +402,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		requireCompact,
 	)
 	if restoreErr != nil {
-		reqLog.Warn("openai.gpt54_route_continuity_restore_failed", zap.Error(restoreErr))
+		reqLog.Warn("openai.grok_fallback_continuity_restore_failed", zap.Error(restoreErr))
 		status, code, message, retryAfter := billingErrorDetails(restoreErr)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -409,7 +410,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
-	if restoredOpenAI {
+	if restoredGrok {
 		apiKey = route.apiKey()
 		subscription = route.subscription()
 		requestPlatform = route.platform()
@@ -451,9 +452,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
 	// 使用 IsExplicitImageGenerationIntent 排除被动 image_gen namespace 声明，
 	// 避免 Codex 的被动工具目录使 CC-only 账号被误过滤（#4476）。
-	switchToOpenAIFallback := func(reason string) bool {
-		if err := h.switchOpenAIGPT54Route(c, route, reason, streamStarted || c.Writer.Written()); err != nil {
-			reqLog.Warn("openai.gpt54_grok_fallback_failed", zap.String("reason", reason), zap.Error(err))
+	switchToGrokFallback := func(reason string) bool {
+		if err := h.switchOpenAIToGrokFallbackRoute(c, route, reason, streamStarted || c.Writer.Written()); err != nil {
+			reqLog.Warn("openai.grok_fallback_failed", zap.String("reason", reason), zap.Error(err))
 			status, code, message, retryAfter := billingErrorDetails(err)
 			if retryAfter > 0 {
 				c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -478,7 +479,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			h.openAISecurityAuditError(c, decision)
 			return false
 		}
-		reqLog.Info("openai.gpt54_grok_fallback_switched",
+		reqLog.Info("openai.grok_fallback_switched",
 			zap.String("reason", reason),
 			zap.Any("fallback_group_id", apiKey.GroupID),
 		)
@@ -518,7 +519,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if route.canFallback() && errors.Is(err, service.ErrNoAvailableAccounts) {
-				if switchToOpenAIFallback("no_schedulable_grok_accounts") {
+				if switchToGrokFallback("no_schedulable_openai_accounts") {
 					continue
 				}
 				return
@@ -545,7 +546,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		if selection == nil || selection.Account == nil {
 			if route.canFallback() {
-				if switchToOpenAIFallback("empty_grok_account_selection") {
+				if switchToGrokFallback("empty_openai_account_selection") {
 					continue
 				}
 				return
@@ -642,7 +643,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
 					}
-					if !failoverErr.ShouldRetryNextAccount() {
+					if !failoverErr.ShouldRetryNextAccount() &&
+						!(route.canFallback() && shouldExhaustOpenAIBeforeGrokFallback(failoverErr)) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -679,7 +681,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
 						if route.canFallback() {
-							if switchToOpenAIFallback("grok_failover_budget_exhausted") {
+							if switchToGrokFallback("openai_failover_budget_exhausted") {
 								continue
 							}
 							return
@@ -690,7 +692,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 						if route.canFallback() {
-							if switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
+							if switchToGrokFallback("openai_rate_limit_failover_exhausted") {
 								continue
 							}
 							return
@@ -1042,11 +1044,12 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	route := newOpenAIGPT54Route(apiKey, subscription, reqModel)
+	route := newOpenAIToGrokFallbackRoute(apiKey, subscription, reqModel)
+	markOpenAIToGrokFallbackEligibility(c, route)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
 	sessionHash, promptCacheKey = resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel, body)
-	restoredOpenAI, restoreErr := h.restoreOpenAIGPT54RouteContinuity(
+	restoredGrok, restoreErr := h.restoreOpenAIToGrokFallbackContinuity(
 		c,
 		route,
 		sessionHash,
@@ -1055,7 +1058,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		false,
 	)
 	if restoreErr != nil {
-		reqLog.Warn("openai_messages.gpt54_route_continuity_restore_failed", zap.Error(restoreErr))
+		reqLog.Warn("openai_messages.grok_fallback_continuity_restore_failed", zap.Error(restoreErr))
 		status, code, message, retryAfter := billingErrorDetails(restoreErr)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -1063,7 +1066,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
-	if restoredOpenAI {
+	if restoredGrok {
 		apiKey = route.apiKey()
 		subscription = route.subscription()
 		requestPlatform = route.platform()
@@ -1100,9 +1103,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	effectiveMappedModel := preferredMappedModel
-	switchToOpenAIFallback := func(reason string) bool {
-		if err := h.switchOpenAIGPT54Route(c, route, reason, streamStarted || c.Writer.Written()); err != nil {
-			reqLog.Warn("openai_messages.gpt54_grok_fallback_failed", zap.String("reason", reason), zap.Error(err))
+	switchToGrokFallback := func(reason string) bool {
+		if err := h.switchOpenAIToGrokFallbackRoute(c, route, reason, streamStarted || c.Writer.Written()); err != nil {
+			reqLog.Warn("openai_messages.grok_fallback_failed", zap.String("reason", reason), zap.Error(err))
 			status, code, message, retryAfter := billingErrorDetails(err)
 			if retryAfter > 0 {
 				c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -1129,7 +1132,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			h.anthropicSecurityAuditError(c, decision)
 			return false
 		}
-		reqLog.Info("openai_messages.gpt54_grok_fallback_switched",
+		reqLog.Info("openai_messages.grok_fallback_switched",
 			zap.String("reason", reason),
 			zap.Any("fallback_group_id", apiKey.GroupID),
 		)
@@ -1169,7 +1172,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if route.canFallback() && errors.Is(err, service.ErrNoAvailableAccounts) {
-				if switchToOpenAIFallback("no_schedulable_grok_accounts") {
+				if switchToGrokFallback("no_schedulable_openai_accounts") {
 					continue
 				}
 				return
@@ -1194,7 +1197,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		}
 		if selection == nil || selection.Account == nil {
 			if route.canFallback() {
-				if switchToOpenAIFallback("empty_grok_account_selection") {
+				if switchToGrokFallback("empty_openai_account_selection") {
 					continue
 				}
 				return
@@ -1278,7 +1281,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(currentRoutingModel), false, nil)
 					}
-					if !failoverErr.ShouldRetryNextAccount() {
+					if !failoverErr.ShouldRetryNextAccount() &&
+						!(route.canFallback() && shouldExhaustOpenAIBeforeGrokFallback(failoverErr)) {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1311,7 +1315,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
 						if route.canFallback() {
-							if switchToOpenAIFallback("grok_failover_budget_exhausted") {
+							if switchToGrokFallback("openai_failover_budget_exhausted") {
 								continue
 							}
 							return
@@ -1322,7 +1326,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 						if route.canFallback() {
-							if switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
+							if switchToGrokFallback("openai_rate_limit_failover_exhausted") {
 								continue
 							}
 							return
@@ -1817,7 +1821,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(apiKey)
-	route := newOpenAIGPT54Route(apiKey, subscription, reqModel)
+	route := newOpenAIToGrokFallbackRoute(apiKey, subscription, reqModel)
+	markOpenAIToGrokFallbackEligibility(c, route)
 	sessionHash := h.gatewayService.GenerateSessionHashWithFallback(
 		c,
 		firstMessage,
@@ -1827,7 +1832,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage) && requestPlatform == service.PlatformOpenAI {
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
 	}
-	restoredOpenAI, restoreErr := h.restoreOpenAIGPT54RouteContinuity(
+	restoredGrok, restoreErr := h.restoreOpenAIToGrokFallbackContinuity(
 		c,
 		route,
 		sessionHash,
@@ -1836,11 +1841,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		false,
 	)
 	if restoreErr != nil {
-		reqLog.Warn("openai.websocket_gpt54_route_continuity_restore_failed", zap.Error(restoreErr))
-		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "OpenAI fallback route is unavailable")
+		reqLog.Warn("openai.websocket_grok_fallback_continuity_restore_failed", zap.Error(restoreErr))
+		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "Grok fallback route is unavailable")
 		return
 	}
-	if restoredOpenAI {
+	if restoredGrok {
 		apiKey = route.apiKey()
 		subscription = route.subscription()
 		requestPlatform = route.platform()
@@ -1866,7 +1871,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	failedAccountIDs := route.failedAccountIDs()
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
-	var switchToOpenAIFallback func(reason string) bool
+	var switchToGrokFallback func(reason string) bool
 	handleWSFailover := func(account *service.Account, failoverErr *service.UpstreamFailoverError) bool {
 		if ctx.Err() != nil {
 			return false
@@ -1875,7 +1880,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
 		}
 		releaseAccountSlot()
-		if !failoverErr.ShouldRetryNextAccount() {
+		if !failoverErr.ShouldRetryNextAccount() &&
+			!(route.canFallback() && shouldExhaustOpenAIBeforeGrokFallback(failoverErr)) {
 			closeOpenAIWSFailoverExhausted(wsConn, failoverErr)
 			return false
 		}
@@ -1887,7 +1893,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		lastFailoverErr = failoverErr
 		if switchCount >= maxAccountSwitches {
 			if route.canFallback() {
-				if switchToOpenAIFallback != nil && switchToOpenAIFallback("grok_failover_budget_exhausted") {
+				if switchToGrokFallback != nil && switchToGrokFallback("openai_failover_budget_exhausted") {
 					return ensureUserSlotHeld()
 				}
 				return false
@@ -1898,7 +1904,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		switchCount++
 		if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
 			if route.canFallback() {
-				if switchToOpenAIFallback != nil && switchToOpenAIFallback("grok_rate_limit_failover_exhausted") {
+				if switchToGrokFallback != nil && switchToGrokFallback("openai_rate_limit_failover_exhausted") {
 					return ensureUserSlotHeld()
 				}
 				return false
@@ -1921,10 +1927,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 与 HTTP Responses 路径保持一致：生图意图请求要求账号支持 Responses API（#4417）。
 	// WSv2 传输本身已隐含 Responses 支持，此处为防御性对齐。
 	// 使用 IsExplicitImageGenerationIntent 排除被动 namespace 声明（#4476）。
-	switchToOpenAIFallback = func(reason string) bool {
-		if err := h.switchOpenAIGPT54Route(c, route, reason, false); err != nil {
-			reqLog.Warn("openai.websocket_gpt54_grok_fallback_failed", zap.String("reason", reason), zap.Error(err))
-			closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "OpenAI fallback route is unavailable")
+	switchToGrokFallback = func(reason string) bool {
+		if err := h.switchOpenAIToGrokFallbackRoute(c, route, reason, false); err != nil {
+			reqLog.Warn("openai.websocket_grok_fallback_failed", zap.String("reason", reason), zap.Error(err))
+			closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "Grok fallback route is unavailable")
 			return false
 		}
 		apiKey = route.apiKey()
@@ -1935,14 +1941,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		switchCount = 0
 		lastFailoverErr = nil
 		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
-		requiredTransport = service.OpenAIUpstreamTransportResponsesWebsocketV2Ingress
+		requiredTransport = service.OpenAIUpstreamTransportHTTPSSE
 		channelMappingWS, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
 		if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage, "fallback_route_switch"); decision != nil && !decision.AllowNextStage {
 			writeSecurityAuditWSError(ctx, wsConn, decision)
 			closeOpenAIClientWS(wsConn, securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision))
 			return false
 		}
-		reqLog.Info("openai.websocket_gpt54_grok_fallback_switched",
+		reqLog.Info("openai.websocket_grok_fallback_switched",
 			zap.String("reason", reason),
 			zap.Any("fallback_group_id", apiKey.GroupID),
 		)
@@ -1974,7 +1980,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if route.canFallback() && errors.Is(err, service.ErrNoAvailableAccounts) {
-				if switchToOpenAIFallback("no_schedulable_grok_accounts") {
+				if switchToGrokFallback("no_schedulable_openai_accounts") {
 					continue
 				}
 				return
@@ -1988,7 +1994,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 		if selection == nil || selection.Account == nil {
 			if route.canFallback() {
-				if switchToOpenAIFallback("empty_grok_account_selection") {
+				if switchToGrokFallback("empty_openai_account_selection") {
 					continue
 				}
 				return

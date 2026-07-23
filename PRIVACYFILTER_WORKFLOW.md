@@ -135,10 +135,9 @@ logging. The cached API key object is not mutated. Explicit aliases take
 precedence over family routing:
 
 ```text
-gpt-5.4          -> Grok
 claude-opus-4-8 -> Grok
 grok-*           -> Grok
-other gpt-*      -> OpenAI/Codex
+gpt-*            -> OpenAI/Codex
 other claude-*   -> Anthropic/Claude
 unknown models   -> default group
 ```
@@ -157,6 +156,12 @@ mappings:
 grok-4.5        -> grok-4.5
 claude-opus-4-8 -> grok-4.5
 gpt-5.2         -> grok-4.5
+gpt-5.4         -> grok-4.5
+gpt-5.4-mini    -> grok-4.5
+gpt-5.5         -> grok-4.5
+gpt-5.6-luna    -> grok-4.5
+gpt-5.6-sol     -> grok-4.5
+gpt-5.6-terra   -> grok-4.5
 ```
 
 The direct mapping is required because explicit account mappings also act as
@@ -164,10 +169,11 @@ the scheduler whitelist. The Messages compatibility path resolves Claude
 aliases to `grok-4.5` before account selection.
 
 The frontend selects all compatible Grok groups from live data and submits both
-the mappings and selected group IDs. Both backend account-creation services add
-the mappings when callers omit `credentials.model_mapping`; explicit caller
-configuration always wins. Existing accounts and edit operations are not
-modified.
+the mappings and selected group IDs. Both backend account-creation services
+merge missing defaults into every new Grok account, including OAuth, SSO,
+manual, bulk, and remote imports. Explicit caller values for the same source
+model win. Migration `186` adds missing aliases to existing Grok accounts
+without overwriting account-specific mappings.
 
 Upgrade acceptance checklist:
 
@@ -179,32 +185,35 @@ Upgrade acceptance checklist:
   direct `grok-4.5` scheduler eligibility.
 - Existing single-group API keys retain their original behavior.
 
-### GPT-5.4 Grok-first bound-group fallback
+### OpenAI-first bound-group Grok fallback
 
-Exact `gpt-5.4` requests use the API key's bound Grok group first, where the
-existing account mapping sends the request upstream as `grok-4.5`. If the Grok
-route is conclusively unavailable before client-visible output starts, the
-same request may switch once to the same API key's uniquely bound OpenAI group.
-It never searches globally available groups or accounts.
+Requests for `gpt-5.2`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`,
+`gpt-5.6-luna`, `gpt-5.6-sol`, and `gpt-5.6-terra` use the API key's OpenAI
+group first. If that route is conclusively unavailable before client-visible
+output starts, the same request may switch once to that API key's uniquely
+bound active Grok group, where the account mapping sends the request upstream
+as `grok-4.5`. It never searches globally available groups or accounts.
 
-Normal Grok concurrency waiting does not trigger fallback. Fallback is allowed
-only after no schedulable Grok account remains, or after failover-eligible Grok
+An API key without a uniquely bound active Grok group is not fallback-eligible;
+the original OpenAI no-account or upstream error is returned normally. Normal
+OpenAI concurrency waiting does not trigger fallback. Fallback is allowed only
+after no schedulable OpenAI account remains, or after failover-eligible OpenAI
 credential, entitlement, rate-limit, transport, or upstream-server errors have
-exhausted the Grok route. Invalid client requests, billing or permission
+exhausted the OpenAI route. Invalid `400` client requests, billing or policy
 rejections, cancellation, and requests that already emitted HTTP/SSE/WebSocket
 output do not switch groups.
 
-The route switch uses a request-local API key copy. The OpenAI group's
+The route switch uses a request-local API key copy. The Grok group's
 subscription, group RPM, scheduler, account slots, channel mapping, security
 policy, sticky session, quota platform, usage record, and operations context
 must all use that copy. The authenticated cached key remains unchanged. The
 user-global RPM counter is not incremented a second time during a mid-request
 route switch.
 
-A successful OpenAI fallback binds the existing session hash or
-`previous_response_id` to the OpenAI group. Later requests in that context
-restore OpenAI before billing and scheduling, even if Grok becomes healthy
-again. Failed fallback attempts do not create continuity bindings.
+A successful Grok fallback binds the existing session hash or
+`previous_response_id` to the Grok group. Later requests in that context
+restore Grok before billing and scheduling so response continuity is not
+broken. Failed fallback attempts do not create continuity bindings.
 
 This customization covers:
 
@@ -215,17 +224,16 @@ This customization covers:
 
 Upgrade acceptance checklist:
 
-- A healthy Grok account receives a new exact `gpt-5.4` request first and maps
-  it to `grok-4.5`.
-- A Grok account wait plan waits or rejects normally without attempting OpenAI.
-- No Grok candidate and exhausted failover-eligible Grok errors switch once to
-  the uniquely bound OpenAI group.
-- Grok `400`, client cancellation, billing rejection, and started output never
+- A healthy OpenAI account receives each configured `gpt-*` request before Grok.
+- An OpenAI account wait plan waits or rejects normally without attempting Grok.
+- No OpenAI candidate and exhausted failover-eligible OpenAI errors switch once
+  to the uniquely bound Grok group.
+- OpenAI `400`, client cancellation, billing rejection, and started output never
   switch groups.
-- Missing or ambiguous OpenAI bindings fail without accessing another group.
-- OpenAI fallback usage, subscription, concurrency, policy, quota, and logs use
-  the OpenAI group ID.
-- A successful fallback session remains on OpenAI on its next request.
+- Missing or ambiguous Grok bindings preserve the original OpenAI error.
+- Grok fallback usage, subscription, concurrency, policy, quota, and logs use
+  the Grok group ID and record `upstream_model=grok-4.5`.
+- A successful fallback session remains on Grok on its next request.
 - Other models preserve deterministic multi-group routing.
 - HTTP Responses, Chat Completions, Messages, and Responses WebSocket tests pass.
 

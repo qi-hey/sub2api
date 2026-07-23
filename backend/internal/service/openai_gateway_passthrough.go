@@ -286,7 +286,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				return nil, failoverErr
 			}
 		}
-		if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody) {
+		if shouldFailoverOpenAIPassthroughResponse(c, account, resp.StatusCode, probeBody) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 		}
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
@@ -527,7 +527,19 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	return req, nil
 }
 
-func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, responseBody []byte) bool {
+const openAIToGrokFallbackEligibleContextKey = "openai_to_grok_fallback_eligible"
+
+// SetOpenAIToGrokFallbackEligible records that the authenticated API key has a
+// uniquely bound, active Grok group. The passthrough layer uses this marker to
+// return OpenAI authentication failures to the handler before committing a
+// response, so the handler can exhaust OpenAI accounts and switch groups.
+func SetOpenAIToGrokFallbackEligible(c *gin.Context, eligible bool) {
+	if c != nil {
+		c.Set(openAIToGrokFallbackEligibleContextKey, eligible)
+	}
+}
+
+func shouldFailoverOpenAIPassthroughResponse(c *gin.Context, account *Account, statusCode int, responseBody []byte) bool {
 	if isOpenAIContextWindowError("", responseBody) {
 		return false
 	}
@@ -542,6 +554,13 @@ func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, r
 		return false
 	}
 	switch statusCode {
+	case http.StatusUnauthorized,
+		http.StatusForbidden:
+		if c == nil || account.Platform != PlatformOpenAI {
+			return false
+		}
+		eligible, _ := c.Get(openAIToGrokFallbackEligibleContextKey)
+		return eligible == true
 	case http.StatusInternalServerError,
 		http.StatusBadGateway,
 		http.StatusServiceUnavailable,

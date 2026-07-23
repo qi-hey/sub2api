@@ -21,22 +21,38 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestGPT54GrokFirstResponsesFallsBackWhenGrokHasNoSchedulableAccount(t *testing.T) {
+func TestOpenAIToGrokResponsesFallsBackWhenOpenAIHasNoSchedulableAccount(t *testing.T) {
 	t.Parallel()
 	testGPT54GrokFirstHTTPNoAccountFallback(t, "/openai/v1/responses", `{"model":"gpt-5.4","input":"hello","stream":false}`)
 }
 
-func TestGPT54GrokFirstChatCompletionsFallsBackWhenGrokHasNoSchedulableAccount(t *testing.T) {
+func TestOpenAIToGrokChatCompletionsFallsBackWhenOpenAIHasNoSchedulableAccount(t *testing.T) {
 	t.Parallel()
 	testGPT54GrokFirstHTTPNoAccountFallback(t, "/openai/v1/chat/completions", `{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false}`)
 }
 
-func TestGPT54GrokFirstMessagesFallsBackWhenGrokHasNoSchedulableAccount(t *testing.T) {
+func TestOpenAIToGrokMessagesFallsBackWhenOpenAIHasNoSchedulableAccount(t *testing.T) {
 	t.Parallel()
 	testGPT54GrokFirstHTTPNoAccountFallback(t, "/openai/v1/messages", `{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
 }
 
-func TestGPT54GrokFirstResponsesUsesHealthyGrokBeforeOpenAI(t *testing.T) {
+func TestOpenAIToGrokResponsesFallsBackForEveryConfiguredAlias(t *testing.T) {
+	for _, model := range []string{
+		"gpt-5.2", "gpt-5.4", "gpt-5.4-mini", "gpt-5.5",
+		"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
+	} {
+		t.Run(model, func(t *testing.T) {
+			t.Parallel()
+			testGPT54GrokFirstHTTPNoAccountFallback(
+				t,
+				"/openai/v1/responses",
+				`{"model":"`+model+`","input":"hello","stream":false}`,
+			)
+		})
+	}
+}
+
+func TestOpenAIToGrokResponsesUsesHealthyOpenAIBeforeGrok(t *testing.T) {
 	t.Parallel()
 
 	grok := gpt54GrokFirstTestAccount(801, service.PlatformGrok)
@@ -47,43 +63,82 @@ func TestGPT54GrokFirstResponsesUsesHealthyGrokBeforeOpenAI(t *testing.T) {
 	recorder := performGPT54GrokFirstRequest(router, "/openai/v1/responses", `{"model":"gpt-5.4","input":"hello","stream":false}`)
 
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
-	require.Equal(t, []int64{grok.ID}, upstream.accountHits())
+	require.Equal(t, []int64{openAI.ID}, upstream.accountHits())
 }
 
-func TestGPT54GrokFirstResponsesFallsBackAfterRetryableGrokExhaustion(t *testing.T) {
+func TestOpenAIToGrokResponsesFallsBackAfterRetryableOpenAIExhaustion(t *testing.T) {
 	t.Parallel()
 
 	grok := gpt54GrokFirstTestAccount(801, service.PlatformGrok)
 	openAI := gpt54GrokFirstTestAccount(900, service.PlatformOpenAI)
-	upstream := &grokCredentialHandlerUpstream{failureStatus: map[int64]int{grok.ID: http.StatusInternalServerError}}
+	upstream := &grokCredentialHandlerUpstream{failureStatus: map[int64]int{openAI.ID: http.StatusInternalServerError}}
 	router := newGPT54GrokFirstHTTPTestRouter(t, []service.Account{grok, openAI}, upstream)
 
 	recorder := performGPT54GrokFirstRequest(router, "/openai/v1/responses", `{"model":"gpt-5.4","input":"hello","stream":false}`)
 
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
-	require.Equal(t, []int64{grok.ID, openAI.ID}, upstream.accountHits())
+	require.Equal(t, []int64{openAI.ID, grok.ID}, upstream.accountHits())
 }
 
-func TestGPT54GrokFirstResponsesFallsBackWhenGrokSwitchBudgetIsExhausted(t *testing.T) {
+func TestOpenAIToGrokResponsesFallsBackForRetryableOpenAIStatuses(t *testing.T) {
+	for _, status := range []int{
+		http.StatusUnauthorized,
+		http.StatusForbidden,
+		http.StatusTooManyRequests,
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			t.Parallel()
+			grok := gpt54GrokFirstTestAccount(801, service.PlatformGrok)
+			openAI := gpt54GrokFirstTestAccount(900, service.PlatformOpenAI)
+			upstream := &grokCredentialHandlerUpstream{failureStatus: map[int64]int{openAI.ID: status}}
+			router := newGPT54GrokFirstHTTPTestRouter(t, []service.Account{grok, openAI}, upstream)
+
+			recorder := performGPT54GrokFirstRequest(router, "/openai/v1/responses", `{"model":"gpt-5.4","input":"hello","stream":false}`)
+
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			require.Equal(t, []int64{openAI.ID, grok.ID}, upstream.accountHits())
+		})
+	}
+}
+
+func TestOpenAIToGrokResponsesWithoutBoundGrokGroupReturnsOpenAIError(t *testing.T) {
 	t.Parallel()
 
 	grok := gpt54GrokFirstTestAccount(801, service.PlatformGrok)
 	openAI := gpt54GrokFirstTestAccount(900, service.PlatformOpenAI)
-	upstream := &grokCredentialHandlerUpstream{failureStatus: map[int64]int{grok.ID: http.StatusInternalServerError}}
+	upstream := &grokCredentialHandlerUpstream{failureStatus: map[int64]int{openAI.ID: http.StatusUnauthorized}}
+	apiKey := openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false, service.PlatformOpenAI)
+	router, _ := newGPT54GrokFirstHTTPTestRouterWithRepoAndAPIKey(t, []service.Account{grok, openAI}, upstream, 3, apiKey)
+
+	recorder := performGPT54GrokFirstRequest(router, "/openai/v1/responses", `{"model":"gpt-5.4","input":"hello","stream":false}`)
+
+	require.Equal(t, http.StatusBadGateway, recorder.Code, recorder.Body.String())
+	require.Contains(t, gjson.GetBytes(recorder.Body.Bytes(), "error.message").String(), "Upstream authentication failed")
+	require.Equal(t, []int64{openAI.ID}, upstream.accountHits())
+}
+
+func TestOpenAIToGrokResponsesFallsBackWhenOpenAISwitchBudgetIsExhausted(t *testing.T) {
+	t.Parallel()
+
+	grok := gpt54GrokFirstTestAccount(801, service.PlatformGrok)
+	openAI := gpt54GrokFirstTestAccount(900, service.PlatformOpenAI)
+	upstream := &grokCredentialHandlerUpstream{failureStatus: map[int64]int{openAI.ID: http.StatusInternalServerError}}
 	router := newGPT54GrokFirstHTTPTestRouterWithMaxSwitches(t, []service.Account{grok, openAI}, upstream, 0)
 
 	recorder := performGPT54GrokFirstRequest(router, "/openai/v1/responses", `{"model":"gpt-5.4","input":"hello","stream":false}`)
 
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
-	require.Equal(t, []int64{grok.ID, openAI.ID}, upstream.accountHits())
+	require.Equal(t, []int64{openAI.ID, grok.ID}, upstream.accountHits())
 }
 
-func TestGPT54GrokFirstResponsesKeepsOpenAIStickyAfterSuccessfulFallback(t *testing.T) {
+func TestOpenAIToGrokResponsesKeepsGrokStickyAfterSuccessfulFallback(t *testing.T) {
 	t.Parallel()
 
 	grok := gpt54GrokFirstTestAccount(801, service.PlatformGrok)
-	grok.Schedulable = false
 	openAI := gpt54GrokFirstTestAccount(900, service.PlatformOpenAI)
+	openAI.Schedulable = false
 	upstream := &grokCredentialHandlerUpstream{}
 	router, repo := newGPT54GrokFirstHTTPTestRouterWithRepo(t, []service.Account{grok, openAI}, upstream, 3)
 
@@ -92,7 +147,7 @@ func TestGPT54GrokFirstResponsesKeepsOpenAIStickyAfterSuccessfulFallback(t *test
 
 	repo.mu.Lock()
 	for i := range repo.accounts {
-		if repo.accounts[i].ID == grok.ID {
+		if repo.accounts[i].ID == openAI.ID {
 			repo.accounts[i].Schedulable = true
 		}
 	}
@@ -100,53 +155,28 @@ func TestGPT54GrokFirstResponsesKeepsOpenAIStickyAfterSuccessfulFallback(t *test
 
 	second := performGPT54GrokFirstRequestWithSession(router, "/openai/v1/responses", `{"model":"gpt-5.4","input":"second","stream":false}`, "sticky-fallback")
 	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
-	require.Equal(t, []int64{openAI.ID, openAI.ID}, upstream.accountHits())
+	require.Equal(t, []int64{grok.ID, grok.ID}, upstream.accountHits())
 }
 
-func TestGPT54GrokFirstResponsesDoesNotFallbackOnInvalidGrokRequest(t *testing.T) {
+func TestOpenAIToGrokResponsesDoesNotFallbackOnInvalidOpenAIRequest(t *testing.T) {
 	t.Parallel()
 
 	grok := gpt54GrokFirstTestAccount(801, service.PlatformGrok)
 	openAI := gpt54GrokFirstTestAccount(900, service.PlatformOpenAI)
-	upstream := &grokCredentialHandlerUpstream{failureStatus: map[int64]int{grok.ID: http.StatusBadRequest}}
+	upstream := &grokCredentialHandlerUpstream{failureStatus: map[int64]int{openAI.ID: http.StatusBadRequest}}
 	router := newGPT54GrokFirstHTTPTestRouter(t, []service.Account{grok, openAI}, upstream)
 
 	recorder := performGPT54GrokFirstRequest(router, "/openai/v1/responses", `{"model":"gpt-5.4","input":"hello","stream":false}`)
 
 	require.NotEqual(t, http.StatusOK, recorder.Code, recorder.Body.String())
-	require.Equal(t, []int64{grok.ID}, upstream.accountHits())
+	require.Equal(t, []int64{openAI.ID}, upstream.accountHits())
 }
 
-func TestGPT54GrokFirstResponsesWebSocketFallsBackBeforeFirstFrame(t *testing.T) {
+func TestOpenAIToGrokResponsesWebSocketFallsBackBeforeFirstFrame(t *testing.T) {
 	t.Parallel()
 
-	upstreamHit := make(chan []byte, 1)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
-		if err != nil {
-			return
-		}
-		defer func() { _ = conn.CloseNow() }()
-		readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
-		_, payload, readErr := conn.Read(readCtx)
-		cancelRead()
-		if readErr != nil {
-			return
-		}
-		upstreamHit <- payload
-		writeCtx, cancelWrite := context.WithTimeout(r.Context(), 3*time.Second)
-		_ = conn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.completed","response":{"id":"resp_gpt54_fallback","model":"gpt-5.5","usage":{"input_tokens":1,"output_tokens":1}}}`))
-		cancelWrite()
-		_ = conn.Close(coderws.StatusNormalClosure, "done")
-	}))
-	t.Cleanup(upstream.Close)
-
-	account := gpt54GrokFirstTestAccount(9900, service.PlatformOpenAI)
-	account.Credentials["base_url"] = upstream.URL
-	account.Extra = map[string]any{
-		"openai_apikey_responses_websockets_v2_enabled": true,
-		"openai_apikey_responses_websockets_v2_mode":    service.OpenAIWSIngressModePassthrough,
-	}
+	upstream := &grokCredentialHandlerUpstream{}
+	account := gpt54GrokFirstTestAccount(9900, service.PlatformGrok)
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	cfg.Default.RateMultiplier = 1
 	cfg.Security.URLAllowlist.Enabled = false
@@ -164,7 +194,7 @@ func TestGPT54GrokFirstResponsesWebSocketFallsBackBeforeFirstFrame(t *testing.T)
 	t.Cleanup(billing.Stop)
 	gateway := service.NewOpenAIGatewayService(
 		repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
-		service.NewBillingService(cfg, nil), nil, billing, nil,
+		service.NewBillingService(cfg, nil), nil, billing, upstream,
 		&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil,
 	)
 	cache := &concurrencyCacheMock{
@@ -179,7 +209,7 @@ func TestGPT54GrokFirstResponsesWebSocketFallsBackBeforeFirstFrame(t *testing.T)
 		maxAccountSwitches:  3,
 		cfg:                 cfg,
 	}
-	apiKey := gpt54RouteTestAPIKey(service.PlatformGrok, false)
+	apiKey := openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
@@ -204,18 +234,14 @@ func TestGPT54GrokFirstResponsesWebSocketFallsBackBeforeFirstFrame(t *testing.T)
 	cancelRead()
 	require.NoError(t, err)
 	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
-	require.Equal(t, "resp_gpt54_fallback", gjson.GetBytes(event, "response.id").String())
-	select {
-	case <-upstreamHit:
-	case <-time.After(3 * time.Second):
-		t.Fatal("OpenAI fallback upstream did not receive the replayed first frame")
-	}
+	require.Equal(t, "resp_healthy", gjson.GetBytes(event, "response.id").String())
+	require.Equal(t, []int64{account.ID}, upstream.accountHits())
 }
 
 func testGPT54GrokFirstHTTPNoAccountFallback(t *testing.T, path, body string) {
 	t.Helper()
 
-	account := gpt54GrokFirstTestAccount(900, service.PlatformOpenAI)
+	account := gpt54GrokFirstTestAccount(900, service.PlatformGrok)
 	upstream := &grokCredentialHandlerUpstream{}
 	router := newGPT54GrokFirstHTTPTestRouter(t, []service.Account{account}, upstream)
 	recorder := performGPT54GrokFirstRequest(router, path, body)
@@ -244,7 +270,13 @@ func gpt54GrokFirstTestAccount(id int64, platform string) service.Account {
 			"api_key":  "sk-test-account",
 			"base_url": "https://api.example.test",
 			"model_mapping": map[string]any{
-				"gpt-5.4": mappedModel,
+				"gpt-5.2":       mappedModel,
+				"gpt-5.4":       mappedModel,
+				"gpt-5.4-mini":  mappedModel,
+				"gpt-5.5":       mappedModel,
+				"gpt-5.6-luna":  mappedModel,
+				"gpt-5.6-sol":   mappedModel,
+				"gpt-5.6-terra": mappedModel,
 			},
 		},
 		Extra: map[string]any{"openai_passthrough": true},
@@ -261,6 +293,22 @@ func newGPT54GrokFirstHTTPTestRouterWithMaxSwitches(t *testing.T, accounts []ser
 }
 
 func newGPT54GrokFirstHTTPTestRouterWithRepo(t *testing.T, accounts []service.Account, upstream *grokCredentialHandlerUpstream, maxSwitches int) (*gin.Engine, *grokCredentialHandlerRepo) {
+	return newGPT54GrokFirstHTTPTestRouterWithRepoAndAPIKey(
+		t,
+		accounts,
+		upstream,
+		maxSwitches,
+		openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false),
+	)
+}
+
+func newGPT54GrokFirstHTTPTestRouterWithRepoAndAPIKey(
+	t *testing.T,
+	accounts []service.Account,
+	upstream *grokCredentialHandlerUpstream,
+	maxSwitches int,
+	apiKey *service.APIKey,
+) (*gin.Engine, *grokCredentialHandlerRepo) {
 	t.Helper()
 
 	repo := &grokCredentialHandlerRepo{accounts: accounts, missingOnGet: map[int64]bool{}}
@@ -292,7 +340,6 @@ func newGPT54GrokFirstHTTPTestRouterWithRepo(t *testing.T, accounts []service.Ac
 		cfg,
 	)
 	h.maxAccountSwitches = maxSwitches
-	apiKey := gpt54RouteTestAPIKey(service.PlatformGrok, false)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), apiKey)

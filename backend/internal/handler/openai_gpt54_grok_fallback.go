@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	errOpenAIGPT54FallbackNotEligible     = errors.New("gpt-5.4 grok fallback is not eligible")
-	errOpenAIGPT54FallbackOutputStarted   = errors.New("gpt-5.4 grok fallback cannot switch after output")
-	errOpenAIGPT54FallbackAlreadySwitched = errors.New("gpt-5.4 grok fallback already switched")
-	errOpenAIGPT54FallbackSubscription    = errors.New("gpt-5.4 openai fallback subscription is unavailable")
+	errOpenAIToGrokFallbackNotEligible     = errors.New("openai to grok fallback is not eligible")
+	errOpenAIToGrokFallbackOutputStarted   = errors.New("openai to grok fallback cannot switch after output")
+	errOpenAIToGrokFallbackAlreadySwitched = errors.New("openai to grok fallback already switched")
+	errOpenAIToGrokFallbackSubscription    = errors.New("openai to grok fallback subscription is unavailable")
 )
 
 type openAIFallbackSubscriptionStore interface {
@@ -23,14 +23,15 @@ type openAIFallbackSubscriptionStore interface {
 }
 
 const (
-	openAIGPT54PrimaryRoute = iota
-	openAIGPT54FallbackRoute
+	openAIToGrokPrimaryRouteIndex = iota
+	openAIToGrokFallbackRouteIndex
 )
 
-// openAIGPT54Route owns request-local state for the one-way Grok-to-OpenAI
+// openAIToGrokFallbackRoute owns request-local state for the one-way OpenAI-to-Grok
 // transition. The authenticated API key remains immutable.
-type openAIGPT54Route struct {
+type openAIToGrokFallbackRoute struct {
 	sourceAPIKey        *service.APIKey
+	fallbackAPIKey      *service.APIKey
 	currentAPIKey       *service.APIKey
 	currentSubscription *service.UserSubscription
 	requestedModel      string
@@ -42,134 +43,155 @@ type openAIGPT54Route struct {
 	retriesByRoute      [2]map[int64]int
 }
 
-func newOpenAIGPT54Route(apiKey *service.APIKey, subscription *service.UserSubscription, requestedModel string) *openAIGPT54Route {
+func newOpenAIToGrokFallbackRoute(apiKey *service.APIKey, subscription *service.UserSubscription, requestedModel string) *openAIToGrokFallbackRoute {
 	platform := ""
 	if apiKey != nil && apiKey.Group != nil {
 		platform = apiKey.Group.Platform
 	}
-	return &openAIGPT54Route{
+	var fallbackAPIKey *service.APIKey
+	eligible := service.IsOpenAIToGrokFallbackModel(requestedModel) && platform == service.PlatformOpenAI
+	if eligible {
+		resolved, err := service.ResolveAPIKeyRequestPlatform(apiKey, service.PlatformGrok)
+		if err != nil {
+			eligible = false
+		} else {
+			fallbackAPIKey = resolved
+		}
+	}
+	return &openAIToGrokFallbackRoute{
 		sourceAPIKey:        apiKey,
+		fallbackAPIKey:      fallbackAPIKey,
 		currentAPIKey:       apiKey,
 		currentSubscription: subscription,
 		requestedModel:      strings.ToLower(strings.TrimSpace(requestedModel)),
-		eligible:            strings.EqualFold(strings.TrimSpace(requestedModel), "gpt-5.4") && platform == service.PlatformGrok,
+		eligible:            eligible,
 		failedByRoute: [2]map[int64]struct{}{
-			openAIGPT54PrimaryRoute:  make(map[int64]struct{}),
-			openAIGPT54FallbackRoute: make(map[int64]struct{}),
+			openAIToGrokPrimaryRouteIndex:  make(map[int64]struct{}),
+			openAIToGrokFallbackRouteIndex: make(map[int64]struct{}),
 		},
 		retriesByRoute: [2]map[int64]int{
-			openAIGPT54PrimaryRoute:  make(map[int64]int),
-			openAIGPT54FallbackRoute: make(map[int64]int),
+			openAIToGrokPrimaryRouteIndex:  make(map[int64]int),
+			openAIToGrokFallbackRouteIndex: make(map[int64]int),
 		},
 	}
 }
 
-func (r *openAIGPT54Route) canFallback() bool {
+func markOpenAIToGrokFallbackEligibility(c *gin.Context, route *openAIToGrokFallbackRoute) {
+	service.SetOpenAIToGrokFallbackEligible(c, route != nil && route.canFallback())
+}
+
+func (r *openAIToGrokFallbackRoute) canFallback() bool {
 	return r != nil && r.eligible && !r.didSwitch
 }
 
-func (r *openAIGPT54Route) apiKey() *service.APIKey {
+func (r *openAIToGrokFallbackRoute) apiKey() *service.APIKey {
 	if r == nil {
 		return nil
 	}
 	return r.currentAPIKey
 }
 
-func (r *openAIGPT54Route) subscription() *service.UserSubscription {
+func (r *openAIToGrokFallbackRoute) subscription() *service.UserSubscription {
 	if r == nil {
 		return nil
 	}
 	return r.currentSubscription
 }
 
-func (r *openAIGPT54Route) setSubscription(subscription *service.UserSubscription) {
+func (r *openAIToGrokFallbackRoute) setSubscription(subscription *service.UserSubscription) {
 	if r != nil {
 		r.currentSubscription = subscription
 	}
 }
 
-func (r *openAIGPT54Route) platform() string {
+func (r *openAIToGrokFallbackRoute) platform() string {
 	if r == nil || r.currentAPIKey == nil || r.currentAPIKey.Group == nil {
 		return service.PlatformOpenAI
 	}
 	return openAICompatibleRequestPlatform(r.currentAPIKey)
 }
 
-func (r *openAIGPT54Route) switched() bool {
+func (r *openAIToGrokFallbackRoute) switched() bool {
 	return r != nil && r.didSwitch
 }
 
-func (r *openAIGPT54Route) fallbackReason() string {
+func (r *openAIToGrokFallbackRoute) fallbackReason() string {
 	if r == nil {
 		return ""
 	}
 	return r.reason
 }
 
-func (r *openAIGPT54Route) failedAccountIDs() map[int64]struct{} {
+func (r *openAIToGrokFallbackRoute) failedAccountIDs() map[int64]struct{} {
 	if r == nil {
 		return nil
 	}
 	return r.failedByRoute[r.currentRoute]
 }
 
-func (r *openAIGPT54Route) sameAccountRetries() map[int64]int {
+func (r *openAIToGrokFallbackRoute) sameAccountRetries() map[int64]int {
 	if r == nil {
 		return nil
 	}
 	return r.retriesByRoute[r.currentRoute]
 }
 
-func (r *openAIGPT54Route) primaryFailedAccountIDs() map[int64]struct{} {
+func (r *openAIToGrokFallbackRoute) primaryFailedAccountIDs() map[int64]struct{} {
 	if r == nil {
 		return nil
 	}
-	return r.failedByRoute[openAIGPT54PrimaryRoute]
+	return r.failedByRoute[openAIToGrokPrimaryRouteIndex]
 }
 
-func (r *openAIGPT54Route) primarySameAccountRetries() map[int64]int {
+func (r *openAIToGrokFallbackRoute) primarySameAccountRetries() map[int64]int {
 	if r == nil {
 		return nil
 	}
-	return r.retriesByRoute[openAIGPT54PrimaryRoute]
+	return r.retriesByRoute[openAIToGrokPrimaryRouteIndex]
 }
 
-func (r *openAIGPT54Route) switchToOpenAI(reason string, outputStarted bool) error {
+func shouldExhaustOpenAIBeforeGrokFallback(failoverErr *service.UpstreamFailoverError) bool {
+	if failoverErr == nil {
+		return false
+	}
+	return failoverErr.StatusCode == 401 || failoverErr.StatusCode == 403
+}
+
+func (r *openAIToGrokFallbackRoute) switchToGrok(reason string, outputStarted bool) error {
 	if r == nil || !r.eligible {
-		return errOpenAIGPT54FallbackNotEligible
+		return errOpenAIToGrokFallbackNotEligible
 	}
 	if r.didSwitch {
-		return errOpenAIGPT54FallbackAlreadySwitched
+		return errOpenAIToGrokFallbackAlreadySwitched
 	}
 	if outputStarted {
-		return errOpenAIGPT54FallbackOutputStarted
+		return errOpenAIToGrokFallbackOutputStarted
 	}
 
-	fallbackAPIKey, err := service.ResolveAPIKeyRequestPlatform(r.sourceAPIKey, service.PlatformOpenAI)
-	if err != nil {
-		return err
+	if r.fallbackAPIKey == nil {
+		return errOpenAIToGrokFallbackNotEligible
 	}
-	r.currentAPIKey = fallbackAPIKey
+	r.currentAPIKey = r.fallbackAPIKey
 	r.currentSubscription = nil
-	r.currentRoute = openAIGPT54FallbackRoute
+	r.currentRoute = openAIToGrokFallbackRouteIndex
 	r.didSwitch = true
 	r.reason = strings.TrimSpace(reason)
 	return nil
 }
 
-func (h *OpenAIGatewayHandler) switchOpenAIGPT54Route(c *gin.Context, route *openAIGPT54Route, reason string, outputStarted bool) error {
+func (h *OpenAIGatewayHandler) switchOpenAIToGrokFallbackRoute(c *gin.Context, route *openAIToGrokFallbackRoute, reason string, outputStarted bool) error {
 	if route == nil || !route.canFallback() {
-		return errOpenAIGPT54FallbackNotEligible
+		return errOpenAIToGrokFallbackNotEligible
 	}
 	if outputStarted {
-		return errOpenAIGPT54FallbackOutputStarted
+		return errOpenAIToGrokFallbackOutputStarted
 	}
 
-	fallbackAPIKey, err := service.ResolveAPIKeyRequestPlatform(route.sourceAPIKey, service.PlatformOpenAI)
-	if err != nil {
-		return err
+	fallbackAPIKey := route.fallbackAPIKey
+	if fallbackAPIKey == nil {
+		return errOpenAIToGrokFallbackNotEligible
 	}
-	subscription, err := h.loadOpenAIFallbackSubscription(c.Request.Context(), fallbackAPIKey)
+	subscription, err := h.loadOpenAIToGrokFallbackSubscription(c.Request.Context(), fallbackAPIKey)
 	if err != nil {
 		return err
 	}
@@ -185,17 +207,17 @@ func (h *OpenAIGatewayHandler) switchOpenAIGPT54Route(c *gin.Context, route *ope
 			return err
 		}
 	}
-	if err := route.switchToOpenAI(reason, false); err != nil {
+	if err := route.switchToGrok(reason, false); err != nil {
 		return err
 	}
 	route.setSubscription(subscription)
-	applyOpenAIGPT54RouteToContext(c, route)
+	applyOpenAIToGrokFallbackRouteToContext(c, route)
 	return nil
 }
 
-func (h *OpenAIGatewayHandler) restoreOpenAIGPT54RouteContinuity(
+func (h *OpenAIGatewayHandler) restoreOpenAIToGrokFallbackContinuity(
 	c *gin.Context,
-	route *openAIGPT54Route,
+	route *openAIToGrokFallbackRoute,
 	sessionHash string,
 	previousResponseID string,
 	requiredCapability service.OpenAIEndpointCapability,
@@ -204,13 +226,14 @@ func (h *OpenAIGatewayHandler) restoreOpenAIGPT54RouteContinuity(
 	if h == nil || h.gatewayService == nil || c == nil || c.Request == nil || route == nil || !route.canFallback() {
 		return false, nil
 	}
-	fallbackAPIKey, err := service.ResolveAPIKeyRequestPlatform(route.sourceAPIKey, service.PlatformOpenAI)
-	if err != nil {
+	fallbackAPIKey := route.fallbackAPIKey
+	if fallbackAPIKey == nil {
 		return false, nil
 	}
-	if !h.gatewayService.HasOpenAIRouteContinuity(
+	if !h.gatewayService.HasOpenAICompatibleRouteContinuity(
 		c.Request.Context(),
 		fallbackAPIKey.GroupID,
+		service.PlatformGrok,
 		sessionHash,
 		previousResponseID,
 		route.requestedModel,
@@ -219,36 +242,36 @@ func (h *OpenAIGatewayHandler) restoreOpenAIGPT54RouteContinuity(
 	) {
 		return false, nil
 	}
-	subscription, err := h.loadOpenAIFallbackSubscription(c.Request.Context(), fallbackAPIKey)
+	subscription, err := h.loadOpenAIToGrokFallbackSubscription(c.Request.Context(), fallbackAPIKey)
 	if err != nil {
 		return false, err
 	}
-	if err := route.switchToOpenAI("openai_route_continuity", false); err != nil {
+	if err := route.switchToGrok("grok_route_continuity", false); err != nil {
 		return false, err
 	}
 	route.setSubscription(subscription)
-	applyOpenAIGPT54RouteToContext(c, route)
+	applyOpenAIToGrokFallbackRouteToContext(c, route)
 	return true, nil
 }
 
-func (h *OpenAIGatewayHandler) loadOpenAIFallbackSubscription(ctx context.Context, apiKey *service.APIKey) (*service.UserSubscription, error) {
+func (h *OpenAIGatewayHandler) loadOpenAIToGrokFallbackSubscription(ctx context.Context, apiKey *service.APIKey) (*service.UserSubscription, error) {
 	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.IsSubscriptionType() {
 		return nil, nil
 	}
 	if h == nil || h.fallbackSubscriptionStore == nil || apiKey.User == nil {
-		return nil, errOpenAIGPT54FallbackSubscription
+		return nil, errOpenAIToGrokFallbackSubscription
 	}
 	subscription, err := h.fallbackSubscriptionStore.GetActiveSubscription(ctx, apiKey.User.ID, apiKey.Group.ID)
 	if err != nil {
 		return nil, err
 	}
 	if subscription == nil {
-		return nil, errOpenAIGPT54FallbackSubscription
+		return nil, errOpenAIToGrokFallbackSubscription
 	}
 	return subscription, nil
 }
 
-func applyOpenAIGPT54RouteToContext(c *gin.Context, route *openAIGPT54Route) {
+func applyOpenAIToGrokFallbackRouteToContext(c *gin.Context, route *openAIToGrokFallbackRoute) {
 	if c == nil || c.Request == nil || route == nil || route.apiKey() == nil {
 		return
 	}

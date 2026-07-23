@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGPT54GrokFirstRouteEligibility(t *testing.T) {
+func TestOpenAIToGrokFallbackRouteEligibility(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -24,55 +24,59 @@ func TestGPT54GrokFirstRouteEligibility(t *testing.T) {
 		platform string
 		want     bool
 	}{
-		{name: "exact model", model: "gpt-5.4", platform: service.PlatformGrok, want: true},
-		{name: "normalized exact model", model: " GPT-5.4 ", platform: service.PlatformGrok, want: true},
-		{name: "openai route is not primary", model: "gpt-5.4", platform: service.PlatformOpenAI, want: false},
-		{name: "other gpt model", model: "gpt-5.5", platform: service.PlatformGrok, want: false},
-		{name: "grok model", model: "grok-4.5", platform: service.PlatformGrok, want: false},
-		{name: "model suffix", model: "gpt-5.4-mini", platform: service.PlatformGrok, want: false},
+		{name: "gpt 5.2", model: "gpt-5.2", platform: service.PlatformOpenAI, want: true},
+		{name: "normalized gpt 5.4", model: " GPT-5.4 ", platform: service.PlatformOpenAI, want: true},
+		{name: "gpt 5.4 mini", model: "gpt-5.4-mini", platform: service.PlatformOpenAI, want: true},
+		{name: "gpt 5.5", model: "gpt-5.5", platform: service.PlatformOpenAI, want: true},
+		{name: "gpt 5.6 luna", model: "gpt-5.6-luna", platform: service.PlatformOpenAI, want: true},
+		{name: "gpt 5.6 sol", model: "gpt-5.6-sol", platform: service.PlatformOpenAI, want: true},
+		{name: "gpt 5.6 terra", model: "gpt-5.6-terra", platform: service.PlatformOpenAI, want: true},
+		{name: "grok route is not primary", model: "gpt-5.4", platform: service.PlatformGrok, want: false},
+		{name: "other gpt model", model: "gpt-5.3", platform: service.PlatformOpenAI, want: false},
+		{name: "grok model", model: "grok-4.5", platform: service.PlatformOpenAI, want: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			key := gpt54RouteTestAPIKey(tt.platform, false)
-			route := newOpenAIGPT54Route(key, nil, tt.model)
+			key := openAIToGrokRouteTestAPIKey(tt.platform, false)
+			route := newOpenAIToGrokFallbackRoute(key, nil, tt.model)
 			require.Equal(t, tt.want, route.canFallback())
 			require.Same(t, key, route.apiKey())
 		})
 	}
 }
 
-func TestGPT54GrokFirstRouteSwitchesToBoundOpenAIGroup(t *testing.T) {
+func TestOpenAIToGrokFallbackRouteSwitchesToBoundGrokGroup(t *testing.T) {
 	t.Parallel()
 
-	key := gpt54RouteTestAPIKey(service.PlatformGrok, false)
+	key := openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false)
 	originalGroupID := *key.GroupID
 	originalGroup := key.Group
-	route := newOpenAIGPT54Route(key, nil, "gpt-5.4")
+	route := newOpenAIToGrokFallbackRoute(key, nil, "gpt-5.4")
 
 	route.failedAccountIDs()[101] = struct{}{}
 	route.sameAccountRetries()[101] = 2
 
-	err := route.switchToOpenAI("grok_accounts_exhausted", false)
+	err := route.switchToGrok("openai_accounts_exhausted", false)
 	require.NoError(t, err)
 	require.True(t, route.switched())
-	require.Equal(t, service.PlatformOpenAI, route.platform())
+	require.Equal(t, service.PlatformGrok, route.platform())
 	require.NotNil(t, route.apiKey().GroupID)
 	require.Equal(t, int64(12), *route.apiKey().GroupID)
-	require.Equal(t, "grok_accounts_exhausted", route.fallbackReason())
+	require.Equal(t, "openai_accounts_exhausted", route.fallbackReason())
 	require.Empty(t, route.failedAccountIDs())
 	require.Empty(t, route.sameAccountRetries())
 
 	// The authenticated/cached key and primary attempt state remain untouched.
 	require.Equal(t, originalGroupID, *key.GroupID)
 	require.Same(t, originalGroup, key.Group)
-	require.Equal(t, service.PlatformGrok, key.Group.Platform)
+	require.Equal(t, service.PlatformOpenAI, key.Group.Platform)
 	require.Contains(t, route.primaryFailedAccountIDs(), int64(101))
 	require.Equal(t, 2, route.primarySameAccountRetries()[101])
 }
 
-func TestGPT54GrokFirstRouteRejectsUnsafeOrInvalidSwitch(t *testing.T) {
+func TestOpenAIToGrokFallbackRouteRejectsUnsafeOrInvalidSwitch(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -84,58 +88,68 @@ func TestGPT54GrokFirstRouteRejectsUnsafeOrInvalidSwitch(t *testing.T) {
 	}{
 		{
 			name:        "output already started",
-			key:         gpt54RouteTestAPIKey(service.PlatformGrok, false),
+			key:         openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false),
 			model:       "gpt-5.4",
 			outputBegun: true,
-			wantErr:     errOpenAIGPT54FallbackOutputStarted,
+			wantErr:     errOpenAIToGrokFallbackOutputStarted,
 		},
 		{
-			name:    "openai group unbound",
-			key:     gpt54RouteTestAPIKey(service.PlatformGrok, false, service.PlatformGrok),
+			name:    "grok group unbound",
+			key:     openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false, service.PlatformOpenAI),
 			model:   "gpt-5.4",
-			wantErr: service.ErrAPIKeyGroupNotBound,
+			wantErr: errOpenAIToGrokFallbackNotEligible,
 		},
 		{
-			name:    "openai group ambiguous",
-			key:     gpt54RouteTestAPIKey(service.PlatformGrok, true),
+			name:    "grok group ambiguous",
+			key:     openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, true),
 			model:   "gpt-5.4",
-			wantErr: service.ErrAPIKeyGroupAmbiguous,
+			wantErr: errOpenAIToGrokFallbackNotEligible,
 		},
 		{
 			name:    "other model",
-			key:     gpt54RouteTestAPIKey(service.PlatformGrok, false),
-			model:   "gpt-5.5",
-			wantErr: errOpenAIGPT54FallbackNotEligible,
+			key:     openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false),
+			model:   "gpt-5.3",
+			wantErr: errOpenAIToGrokFallbackNotEligible,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			route := newOpenAIGPT54Route(tt.key, nil, tt.model)
-			err := route.switchToOpenAI("test", tt.outputBegun)
+			route := newOpenAIToGrokFallbackRoute(tt.key, nil, tt.model)
+			err := route.switchToGrok("test", tt.outputBegun)
 			require.ErrorIs(t, err, tt.wantErr)
 			require.False(t, route.switched())
 		})
 	}
 }
 
-func TestGPT54GrokFirstRouteCannotSwitchTwice(t *testing.T) {
+func TestOpenAIToGrokFallbackRouteCannotSwitchTwice(t *testing.T) {
 	t.Parallel()
 
-	route := newOpenAIGPT54Route(gpt54RouteTestAPIKey(service.PlatformGrok, false), nil, "gpt-5.4")
-	require.NoError(t, route.switchToOpenAI("first", false))
-	require.ErrorIs(t, route.switchToOpenAI("second", false), errOpenAIGPT54FallbackAlreadySwitched)
+	route := newOpenAIToGrokFallbackRoute(openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false), nil, "gpt-5.4")
+	require.NoError(t, route.switchToGrok("first", false))
+	require.ErrorIs(t, route.switchToGrok("second", false), errOpenAIToGrokFallbackAlreadySwitched)
 	require.Equal(t, "first", route.fallbackReason())
 }
 
-func TestGPT54GrokFirstRouteHandlerSwitchLoadsDestinationSubscriptionAndUpdatesContext(t *testing.T) {
+func TestOpenAIToGrokFallbackExhaustsAuthenticationFailuresOnly(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		require.True(t, shouldExhaustOpenAIBeforeGrokFallback(&service.UpstreamFailoverError{StatusCode: status}))
+	}
+	for _, status := range []int{http.StatusBadRequest, http.StatusNotFound, http.StatusTooManyRequests, http.StatusInternalServerError} {
+		require.False(t, shouldExhaustOpenAIBeforeGrokFallback(&service.UpstreamFailoverError{StatusCode: status}))
+	}
+	require.False(t, shouldExhaustOpenAIBeforeGrokFallback(nil))
+}
+
+func TestOpenAIToGrokFallbackRouteHandlerSwitchLoadsDestinationSubscriptionAndUpdatesContext(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	key := gpt54RouteTestAPIKey(service.PlatformGrok, false)
+	key := openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false)
 	for i := range key.Groups {
-		if key.Groups[i].Platform == service.PlatformOpenAI {
+		if key.Groups[i].Platform == service.PlatformGrok {
 			key.Groups[i].SubscriptionType = service.SubscriptionTypeSubscription
 		}
 	}
@@ -160,9 +174,9 @@ func TestGPT54GrokFirstRouteHandlerSwitchLoadsDestinationSubscriptionAndUpdatesC
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	c.Set(string(middleware2.ContextKeyAPIKey), key)
-	route := newOpenAIGPT54Route(key, nil, "gpt-5.4")
+	route := newOpenAIToGrokFallbackRoute(key, nil, "gpt-5.4")
 
-	err := h.switchOpenAIGPT54Route(c, route, "grok_accounts_exhausted", false)
+	err := h.switchOpenAIToGrokFallbackRoute(c, route, "openai_accounts_exhausted", false)
 	require.NoError(t, err)
 	require.True(t, route.switched())
 	require.Same(t, subscription, route.subscription())
@@ -177,12 +191,12 @@ func TestGPT54GrokFirstRouteHandlerSwitchLoadsDestinationSubscriptionAndUpdatesC
 	require.Equal(t, int64(12), contextGroup.ID)
 }
 
-func TestGPT54GrokFirstRouteHandlerSubscriptionFailureDoesNotSwitch(t *testing.T) {
+func TestOpenAIToGrokFallbackRouteHandlerSubscriptionFailureDoesNotSwitch(t *testing.T) {
 	t.Parallel()
 
-	key := gpt54RouteTestAPIKey(service.PlatformGrok, false)
+	key := openAIToGrokRouteTestAPIKey(service.PlatformOpenAI, false)
 	for i := range key.Groups {
-		if key.Groups[i].Platform == service.PlatformOpenAI {
+		if key.Groups[i].Platform == service.PlatformGrok {
 			key.Groups[i].SubscriptionType = service.SubscriptionTypeSubscription
 		}
 	}
@@ -198,9 +212,9 @@ func TestGPT54GrokFirstRouteHandlerSubscriptionFailureDoesNotSwitch(t *testing.T
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	route := newOpenAIGPT54Route(key, nil, "gpt-5.4")
+	route := newOpenAIToGrokFallbackRoute(key, nil, "gpt-5.4")
 
-	err := h.switchOpenAIGPT54Route(c, route, "grok_accounts_exhausted", false)
+	err := h.switchOpenAIToGrokFallbackRoute(c, route, "openai_accounts_exhausted", false)
 	require.ErrorIs(t, err, resolverErr)
 	require.False(t, route.switched())
 	require.Same(t, key, route.apiKey())
@@ -222,14 +236,20 @@ func (s *openAIFallbackSubscriptionResolverStub) GetActiveSubscription(_ context
 	return s.subscription, s.err
 }
 
-func gpt54RouteTestAPIKey(primaryPlatform string, ambiguousOpenAI bool, onlyPlatforms ...string) *service.APIKey {
+func openAIToGrokRouteTestAPIKey(primaryPlatform string, ambiguousGrok bool, onlyPlatforms ...string) *service.APIKey {
 	primaryID := int64(11)
-	primary := service.Group{ID: primaryID, Name: "primary", Platform: primaryPlatform, Status: service.StatusActive}
+	primary := service.Group{
+		ID:                    primaryID,
+		Name:                  "primary",
+		Platform:              primaryPlatform,
+		Status:                service.StatusActive,
+		AllowMessagesDispatch: primaryPlatform == service.PlatformOpenAI,
+	}
 	groups := []service.Group{primary}
 
 	platforms := onlyPlatforms
-	if len(platforms) == 0 {
-		platforms = []string{service.PlatformOpenAI}
+	if len(platforms) == 0 && !ambiguousGrok {
+		platforms = []string{service.PlatformGrok}
 	}
 	for _, platform := range platforms {
 		if platform == primaryPlatform {
@@ -237,10 +257,10 @@ func gpt54RouteTestAPIKey(primaryPlatform string, ambiguousOpenAI bool, onlyPlat
 		}
 		groups = append(groups, service.Group{ID: 12, Name: "fallback", Platform: platform, Status: service.StatusActive, AllowMessagesDispatch: platform == service.PlatformOpenAI})
 	}
-	if ambiguousOpenAI {
+	if ambiguousGrok {
 		groups = append(groups,
-			service.Group{ID: 12, Name: "fallback-a", Platform: service.PlatformOpenAI, Status: service.StatusActive},
-			service.Group{ID: 13, Name: "fallback-b", Platform: service.PlatformOpenAI, Status: service.StatusActive},
+			service.Group{ID: 12, Name: "fallback-a", Platform: service.PlatformGrok, Status: service.StatusActive},
+			service.Group{ID: 13, Name: "fallback-b", Platform: service.PlatformGrok, Status: service.StatusActive},
 		)
 	}
 
@@ -249,13 +269,13 @@ func gpt54RouteTestAPIKey(primaryPlatform string, ambiguousOpenAI bool, onlyPlat
 		UserID:   7,
 		GroupID:  &primaryID,
 		Group:    &primary,
-		GroupIDs: groupIDsForGPT54RouteTest(groups),
+		GroupIDs: groupIDsForOpenAIToGrokRouteTest(groups),
 		Groups:   groups,
 		User:     &service.User{ID: 7, Status: service.StatusActive},
 	}
 }
 
-func groupIDsForGPT54RouteTest(groups []service.Group) []int64 {
+func groupIDsForOpenAIToGrokRouteTest(groups []service.Group) []int64 {
 	ids := make([]int64, 0, len(groups))
 	for i := range groups {
 		ids = append(ids, groups[i].ID)

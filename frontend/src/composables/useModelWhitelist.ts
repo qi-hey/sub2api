@@ -480,7 +480,13 @@ const defaultOpenAIModelMappings: ModelMappingEntry[] = [
 const defaultGrokModelMappings: ModelMappingEntry[] = [
   { from: 'grok-4.5', to: 'grok-4.5' },
   { from: 'claude-opus-4-8', to: 'grok-4.5' },
-  { from: 'gpt-5.2', to: 'grok-4.5' }
+  { from: 'gpt-5.2', to: 'grok-4.5' },
+  { from: 'gpt-5.4', to: 'grok-4.5' },
+  { from: 'gpt-5.4-mini', to: 'grok-4.5' },
+  { from: 'gpt-5.5', to: 'grok-4.5' },
+  { from: 'gpt-5.6-luna', to: 'grok-4.5' },
+  { from: 'gpt-5.6-sol', to: 'grok-4.5' },
+  { from: 'gpt-5.6-terra', to: 'grok-4.5' }
 ]
 
 export function getCreateAccountModelRestrictionDefaults(platform: string): {

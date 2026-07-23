@@ -184,9 +184,34 @@ func (s *OpenAIGatewayService) HasOpenAIRouteContinuity(
 	requiredCapability OpenAIEndpointCapability,
 	requireCompact bool,
 ) bool {
+	return s.HasOpenAICompatibleRouteContinuity(
+		ctx,
+		groupID,
+		PlatformOpenAI,
+		sessionHash,
+		previousResponseID,
+		requestedModel,
+		requiredCapability,
+		requireCompact,
+	)
+}
+
+// HasOpenAICompatibleRouteContinuity checks a sticky or previous-response
+// binding inside one OpenAI-compatible platform group.
+func (s *OpenAIGatewayService) HasOpenAICompatibleRouteContinuity(
+	ctx context.Context,
+	groupID *int64,
+	platform string,
+	sessionHash string,
+	previousResponseID string,
+	requestedModel string,
+	requiredCapability OpenAIEndpointCapability,
+	requireCompact bool,
+) bool {
 	if s == nil {
 		return false
 	}
+	platform = normalizeOpenAICompatiblePlatform(platform)
 	if strings.TrimSpace(previousResponseID) != "" &&
 		s.ResolveAccountIDByPreviousResponseIDForScheduler(
 			ctx,
@@ -205,7 +230,7 @@ func (s *OpenAIGatewayService) HasOpenAIRouteContinuity(
 	return s.tryStickySessionHit(
 		ctx,
 		groupID,
-		PlatformOpenAI,
+		platform,
 		sessionHash,
 		requestedModel,
 		nil,

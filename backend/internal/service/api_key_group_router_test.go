@@ -16,7 +16,7 @@ func TestResolveAPIKeyRequestGroupRoutesAliasesAndModelFamilies(t *testing.T) {
 		wantID   int64
 		platform string
 	}{
-		{name: "gpt alias uses grok", model: "gpt-5.4", wantID: 12, platform: PlatformGrok},
+		{name: "gpt 5.4 uses openai", model: "gpt-5.4", wantID: 2, platform: PlatformOpenAI},
 		{name: "claude alias is trimmed and case folded", model: "  CLAUDE-OPUS-4-8  ", wantID: 12, platform: PlatformGrok},
 		{name: "grok family", model: "grok-4.5", wantID: 12, platform: PlatformGrok},
 		{name: "gpt family", model: "gpt-5.5", wantID: 2, platform: PlatformOpenAI},
@@ -81,7 +81,7 @@ func TestResolveAPIKeyRequestGroupRejectsMissingOrInactiveGroups(t *testing.T) {
 	t.Run("requested platform is unbound", func(t *testing.T) {
 		key := testMultiGroupRoutingAPIKey()
 		key.Groups = key.Groups[:2]
-		selected, err := ResolveAPIKeyRequestGroup(key, "gpt-5.4")
+		selected, err := ResolveAPIKeyRequestGroup(key, "grok-4.5")
 		require.Nil(t, selected)
 		require.ErrorIs(t, err, ErrAPIKeyGroupNotBound)
 	})
@@ -89,7 +89,7 @@ func TestResolveAPIKeyRequestGroupRejectsMissingOrInactiveGroups(t *testing.T) {
 	t.Run("requested platform is inactive", func(t *testing.T) {
 		key := testMultiGroupRoutingAPIKey()
 		key.Groups[2].Status = StatusDisabled
-		selected, err := ResolveAPIKeyRequestGroup(key, "gpt-5.4")
+		selected, err := ResolveAPIKeyRequestGroup(key, "grok-4.5")
 		require.Nil(t, selected)
 		require.ErrorIs(t, err, ErrAPIKeyGroupNotBound)
 	})
@@ -117,7 +117,7 @@ func TestResolveAPIKeyRequestGroupHandlesMultipleGroupsForPlatform(t *testing.T)
 			},
 		}
 
-		selected, err := ResolveAPIKeyRequestGroup(key, "gpt-5.4")
+		selected, err := ResolveAPIKeyRequestGroup(key, "grok-4.5")
 		require.NoError(t, err)
 		require.Equal(t, int64(12), *selected.GroupID)
 	})
@@ -127,7 +127,7 @@ func TestResolveAPIKeyRequestGroupHandlesMultipleGroupsForPlatform(t *testing.T)
 		key.GroupIDs = append(key.GroupIDs, 13)
 		key.Groups = append(key.Groups, Group{ID: 13, Platform: PlatformGrok, Status: StatusActive})
 
-		selected, err := ResolveAPIKeyRequestGroup(key, "gpt-5.4")
+		selected, err := ResolveAPIKeyRequestGroup(key, "grok-4.5")
 		require.Nil(t, selected)
 		require.ErrorIs(t, err, ErrAPIKeyGroupAmbiguous)
 		require.Equal(t, http.StatusInternalServerError, infraerrors.Code(err))
@@ -147,7 +147,7 @@ func TestResolveAPIKeyRequestGroupUsesTheValidatedDuplicateGroup(t *testing.T) {
 		},
 	}
 
-	selected, err := ResolveAPIKeyRequestGroup(key, "gpt-5.4")
+	selected, err := ResolveAPIKeyRequestGroup(key, "grok-4.5")
 
 	require.NoError(t, err)
 	require.Equal(t, int64(12), *selected.GroupID)
@@ -167,7 +167,7 @@ func TestResolveAPIKeyRequestGroupRejectsConflictingActiveDuplicateID(t *testing
 		},
 	}
 
-	selected, err := ResolveAPIKeyRequestGroup(key, "gpt-5.4")
+	selected, err := ResolveAPIKeyRequestGroup(key, "grok-4.5")
 
 	require.Nil(t, selected)
 	require.ErrorIs(t, err, ErrAPIKeyGroupConflict)

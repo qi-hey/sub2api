@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,12 +18,18 @@ func TestGrokAccountDefaultsAddMissingModelMappingsWithoutMutatingInput(t *testi
 	require.Equal(t, map[string]any{
 		"claude-opus-4-8": "grok-4.5",
 		"gpt-5.2":         "grok-4.5",
+		"gpt-5.4":         "grok-4.5",
+		"gpt-5.4-mini":    "grok-4.5",
+		"gpt-5.5":         "grok-4.5",
+		"gpt-5.6-luna":    "grok-4.5",
+		"gpt-5.6-sol":     "grok-4.5",
+		"gpt-5.6-terra":   "grok-4.5",
 		"grok-4.5":        "grok-4.5",
 	}, got["model_mapping"])
 	require.True(t, (&Account{Platform: PlatformGrok, Credentials: got}).IsModelSupported("grok-4.5"))
 }
 
-func TestGrokAccountDefaultsPreserveExplicitMapping(t *testing.T) {
+func TestGrokAccountDefaultsMergeDefaultsWithoutOverwritingExplicitMapping(t *testing.T) {
 	credentials := map[string]any{
 		"api_key": "sk-test",
 		"model_mapping": map[string]any{
@@ -33,10 +40,38 @@ func TestGrokAccountDefaultsPreserveExplicitMapping(t *testing.T) {
 	require.NoError(t, err)
 
 	got := ApplyGrokCreateDefaults(credentials)
-	after, err := json.Marshal(got)
+	afterInput, err := json.Marshal(credentials)
 	require.NoError(t, err)
 
-	require.Equal(t, string(before), string(after))
+	require.Equal(t, string(before), string(afterInput))
+	mapping, ok := got["model_mapping"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "grok-custom", mapping["custom-model"])
+	require.Equal(t, "grok-4.5", mapping["gpt-5.2"])
+	require.Equal(t, "grok-4.5", mapping["gpt-5.6-sol"])
+}
+
+func TestGrokAccountDefaultsExplicitAliasOverridesDefault(t *testing.T) {
+	got := ApplyGrokCreateDefaults(map[string]any{
+		"model_mapping": map[string]string{"gpt-5.2": "grok-custom"},
+	})
+
+	mapping, ok := got["model_mapping"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "grok-custom", mapping["gpt-5.2"])
+	require.Equal(t, "grok-4.5", mapping["gpt-5.4"])
+}
+
+func TestOpenAIToGrokFallbackModelEligibility(t *testing.T) {
+	for _, model := range []string{
+		"gpt-5.2", "gpt-5.4", "gpt-5.4-mini", "gpt-5.5",
+		"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
+	} {
+		require.True(t, IsOpenAIToGrokFallbackModel(model), model)
+	}
+	require.True(t, IsOpenAIToGrokFallbackModel(" GPT-5.2 "))
+	require.False(t, IsOpenAIToGrokFallbackModel("grok-4.5"))
+	require.False(t, IsOpenAIToGrokFallbackModel("gpt-5.3"))
 }
 
 func TestAdminServiceCreateAccountAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
@@ -68,6 +103,12 @@ func TestAdminServiceCreateAccountAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 				require.Equal(t, map[string]any{
 					"claude-opus-4-8": "grok-4.5",
 					"gpt-5.2":         "grok-4.5",
+					"gpt-5.4":         "grok-4.5",
+					"gpt-5.4-mini":    "grok-4.5",
+					"gpt-5.5":         "grok-4.5",
+					"gpt-5.6-luna":    "grok-4.5",
+					"gpt-5.6-sol":     "grok-4.5",
+					"gpt-5.6-terra":   "grok-4.5",
 					"grok-4.5":        "grok-4.5",
 				}, created.Credentials["model_mapping"])
 			} else {
@@ -200,6 +241,12 @@ func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 			wantMapping: map[string]any{
 				"claude-opus-4-8": "grok-4.5",
 				"gpt-5.2":         "grok-4.5",
+				"gpt-5.4":         "grok-4.5",
+				"gpt-5.4-mini":    "grok-4.5",
+				"gpt-5.5":         "grok-4.5",
+				"gpt-5.6-luna":    "grok-4.5",
+				"gpt-5.6-sol":     "grok-4.5",
+				"gpt-5.6-terra":   "grok-4.5",
 				"grok-4.5":        "grok-4.5",
 			},
 		},
@@ -212,7 +259,11 @@ func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 					"custom-model": "grok-custom",
 				},
 			},
-			wantMapping: map[string]any{"custom-model": "grok-custom"},
+			wantMapping: func() map[string]any {
+				mapping := maps.Clone(defaultGrokCreateModelMapping)
+				mapping["custom-model"] = "grok-custom"
+				return mapping
+			}(),
 		},
 		{
 			name:        "openai unchanged",

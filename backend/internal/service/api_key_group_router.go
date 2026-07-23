@@ -72,7 +72,7 @@ func resolveAPIKeyRequestPlatform(apiKey *APIKey, platform string) (*APIKey, err
 func requestedAPIKeyPlatform(model string) string {
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	switch normalized {
-	case "gpt-5.4", "claude-opus-4-8":
+	case "claude-opus-4-8":
 		return PlatformGrok
 	}
 	switch {
