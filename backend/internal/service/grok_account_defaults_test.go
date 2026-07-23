@@ -229,15 +229,19 @@ func TestDefaultGroupIDsForCreate(t *testing.T) {
 
 func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 	tests := []struct {
-		name        string
-		platform    string
-		credentials map[string]any
-		wantMapping map[string]any
+		name            string
+		platform        string
+		credentials     map[string]any
+		concurrency     int
+		wantConcurrency int
+		wantMapping     map[string]any
 	}{
 		{
-			name:        "grok defaults",
-			platform:    PlatformGrok,
-			credentials: map[string]any{"api_key": "sk-test"},
+			name:            "grok defaults",
+			platform:        PlatformGrok,
+			credentials:     map[string]any{"api_key": "sk-test"},
+			concurrency:     0,
+			wantConcurrency: 2,
 			wantMapping: map[string]any{
 				"claude-opus-4-8": "grok-4.5",
 				"gpt-5.2":         "grok-4.5",
@@ -251,8 +255,10 @@ func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 			},
 		},
 		{
-			name:     "grok explicit mapping",
-			platform: PlatformGrok,
+			name:            "grok explicit mapping",
+			platform:        PlatformGrok,
+			concurrency:     50,
+			wantConcurrency: 2,
 			credentials: map[string]any{
 				"api_key": "sk-test",
 				"model_mapping": map[string]any{
@@ -266,9 +272,11 @@ func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 			}(),
 		},
 		{
-			name:        "openai unchanged",
-			platform:    PlatformOpenAI,
-			credentials: map[string]any{"api_key": "sk-test"},
+			name:            "openai unchanged",
+			platform:        PlatformOpenAI,
+			credentials:     map[string]any{"api_key": "sk-test"},
+			concurrency:     50,
+			wantConcurrency: 50,
 		},
 	}
 
@@ -282,9 +290,11 @@ func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 				Platform:    tt.platform,
 				Type:        AccountTypeAPIKey,
 				Credentials: tt.credentials,
+				Concurrency: tt.concurrency,
 			})
 
 			require.NoError(t, err)
+			require.Equal(t, tt.wantConcurrency, created.Concurrency)
 			if tt.wantMapping == nil {
 				require.NotContains(t, created.Credentials, "model_mapping")
 				return
@@ -292,6 +302,42 @@ func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 			require.Equal(t, tt.wantMapping, created.Credentials["model_mapping"])
 		})
 	}
+}
+
+func TestAccountServiceUpdateCapsGrokConcurrency(t *testing.T) {
+	repo := &grokConcurrencyUpdateRepo{account: &Account{
+		ID:          7,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+	}}
+	accountService := NewAccountService(repo, nil)
+	requested := 10
+
+	updated, err := accountService.Update(context.Background(), repo.account.ID, UpdateAccountRequest{
+		Concurrency: &requested,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, updated.Concurrency)
+	require.Equal(t, 2, repo.updated.Concurrency)
+}
+
+type grokConcurrencyUpdateRepo struct {
+	AccountRepository
+	account *Account
+	updated *Account
+}
+
+func (r *grokConcurrencyUpdateRepo) GetByID(_ context.Context, _ int64) (*Account, error) {
+	clone := *r.account
+	return &clone, nil
+}
+
+func (r *grokConcurrencyUpdateRepo) Update(_ context.Context, account *Account) error {
+	clone := *account
+	r.updated = &clone
+	return nil
 }
 
 type grokDefaultsAccountRepo struct {

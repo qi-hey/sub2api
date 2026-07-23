@@ -2716,9 +2716,10 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 	}
 	if updates.Concurrency != nil {
-		setClauses = append(setClauses, "concurrency = $"+itoa(idx))
-		args = append(args, *updates.Concurrency)
-		idx++
+		grokLimit := itoa(service.GrokMaxAccountConcurrency)
+		setClauses = append(setClauses, "concurrency = CASE WHEN platform = $"+itoa(idx)+" AND ($"+itoa(idx+1)+" <= 0 OR $"+itoa(idx+1)+" > "+grokLimit+") THEN "+grokLimit+" ELSE $"+itoa(idx+1)+" END")
+		args = append(args, service.PlatformGrok, *updates.Concurrency)
+		idx += 2
 	}
 	if updates.Priority != nil {
 		setClauses = append(setClauses, "priority = $"+itoa(idx))

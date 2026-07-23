@@ -230,7 +230,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Credentials: req.Credentials,
 		Extra:       req.Extra,
 		ProxyID:     req.ProxyID,
-		Concurrency: req.Concurrency,
+		Concurrency: normalizeAccountConcurrency(req.Platform, req.Type, req.Concurrency),
 		Priority:    req.Priority,
 		Status:      StatusActive,
 		ExpiresAt:   req.ExpiresAt,
@@ -332,7 +332,7 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Concurrency != nil {
-		account.Concurrency = *req.Concurrency
+		account.Concurrency = normalizeAccountConcurrency(account.Platform, account.Type, *req.Concurrency)
 	}
 
 	if req.Priority != nil {

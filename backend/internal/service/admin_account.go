@@ -332,11 +332,14 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	return duplicate, nil
 }
 
-func normalizeAccountConcurrency(platform, accountType string, concurrency int) int {
-	if platform == PlatformGrok && accountType == AccountTypeOAuth {
-		if concurrency <= 0 {
-			return 1
-		}
+const GrokMaxAccountConcurrency = 2
+
+func normalizeAccountConcurrency(platform, _ string, concurrency int) int {
+	if platform != PlatformGrok {
+		return concurrency
+	}
+	if concurrency <= 0 || concurrency > GrokMaxAccountConcurrency {
+		return GrokMaxAccountConcurrency
 	}
 	return concurrency
 }

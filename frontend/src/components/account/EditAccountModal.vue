@@ -1418,8 +1418,12 @@
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input"
-            @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
+          <input v-model.number="form.concurrency" type="number" min="1"
+            :max="props.account?.platform === 'grok' ? 2 : undefined" class="input"
+            data-testid="account-concurrency-input"
+            @input="form.concurrency = props.account?.platform === 'grok'
+              ? Math.min(2, Math.max(1, form.concurrency || 2))
+              : Math.max(1, form.concurrency || 1)" />
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.loadFactor') }}</label>

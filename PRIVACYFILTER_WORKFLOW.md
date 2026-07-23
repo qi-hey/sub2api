@@ -175,6 +175,15 @@ manual, bulk, and remote imports. Explicit caller values for the same source
 model win. Migration `186` adds missing aliases to existing Grok accounts
 without overwriting account-specific mappings.
 
+Grok account concurrency defaults to `2` and must never exceed `2`. The create
+and edit forms clamp Grok values to that limit. Both backend creation services,
+single-account updates, duplication/import paths, and repository bulk updates
+enforce the same rule for OAuth and API-key accounts. Existing value `1` is
+preserved; missing, non-positive, or greater-than-two values normalize to `2`.
+Migration `187` repairs existing rows and adds a database constraint so a
+future bypass cannot persist an unsafe Grok concurrency value. Other platforms
+retain their configured concurrency unchanged.
+
 Upgrade acceptance checklist:
 
 - Multi-group migration, repository, service, middleware, handler contract, and
@@ -183,6 +192,8 @@ Upgrade acceptance checklist:
   cross-group failover.
 - Grok create tests verify frontend payloads, both backend creation paths, and
   direct `grok-4.5` scheduler eligibility.
+- Grok concurrency tests verify default `2`, maximum `2`, preservation of `1`,
+  bulk-update enforcement, and the database constraint.
 - Existing single-group API keys retain their original behavior.
 
 ### OpenAI-first bound-group Grok fallback

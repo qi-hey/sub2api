@@ -163,6 +163,11 @@ describe('CreateAccountModal default group selection', () => {
     await flushPromises()
 
     expect(wrapper.getComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([12])
+    const concurrencyInput = wrapper.get('[data-testid="account-concurrency-input"]')
+    expect((concurrencyInput.element as HTMLInputElement).value).toBe('2')
+    expect(concurrencyInput.attributes('max')).toBe('2')
+    await concurrencyInput.setValue('10')
+    expect((concurrencyInput.element as HTMLInputElement).value).toBe('2')
     expect(readVisibleModelMappings(wrapper)).toEqual([
       ['grok-4.5', 'grok-4.5'],
       ['claude-opus-4-8', 'grok-4.5'],
@@ -206,6 +211,7 @@ describe('CreateAccountModal default group selection', () => {
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
       platform: 'grok',
+      concurrency: 2,
       group_ids: [12],
       credentials: {
         model_mapping: {

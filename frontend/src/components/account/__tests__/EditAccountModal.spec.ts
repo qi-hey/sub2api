@@ -316,6 +316,16 @@ describe('EditAccountModal', () => {
     authIsSimpleMode.value = true
   })
 
+  it('caps Grok account concurrency at two', async () => {
+    const wrapper = mountModal(buildGrokOAuthAccount())
+    const concurrencyInput = wrapper.get('[data-testid="account-concurrency-input"]')
+
+    expect(concurrencyInput.attributes('max')).toBe('2')
+    await concurrencyInput.setValue('10')
+
+    expect((concurrencyInput.element as HTMLInputElement).value).toBe('2')
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
