@@ -1,0 +1,43 @@
+version=0.1.163-r13
+source_commit=11ddeca18bb5
+upstream_tag=v0.1.163
+artifact=build/sub2api-0.1.163-r13-linux-amd64
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+size_bytes=111464610
+sha256=3a4cee93abc8d8a0fee9ec0acfc11b0893f58dcf33977433c13cd7005263f673
+
+features:
+- New Grok OAuth and API-key accounts default to concurrency 2.
+- Grok concurrency values below 1 or above 2 normalize to 2; an explicit value of 1 remains 1.
+- Manual create, OAuth, SSO, remote import, duplicate, single edit, and bulk edit paths are protected.
+- Create and edit forms display a Grok maximum of 2 and clamp unsafe input.
+- Migration 187 repairs active Grok rows and adds a validated database constraint as a final guard.
+- Non-Grok account concurrency behavior is unchanged.
+
+verification:
+- Targeted backend concurrency, create, edit, and migration tests passed.
+- Full unit suites passed for internal/repository, internal/service, internal/handler, and migrations.
+- Frontend CreateAccountModal and EditAccountModal suites passed: 53 tests.
+- Frontend production build and Linux/amd64 embedded binary build passed.
+- The production constraint rejected a transactional concurrency 10 probe.
+- A Grok account created after deployment persisted with concurrency 2.
+- Redis scheduler metadata for a current Grok account reports concurrency 2.
+
+deployment:
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=3a4cee93abc8d8a0fee9ec0acfc11b0893f58dcf33977433c13cd7005263f673
+- previous_version=0.1.163-r12
+- previous_sha256=7477bf143eeb45a1e4aa9ca2f184a75f8558930f79e405784176288dbc8d881b
+- rollback_backup=/opt/sub2api/backups/sub2api_before_0.1.163-r13_deploy_20260723_170203
+- service_state=active/running
+- service_restarts_after_deploy=0
+- public_health=https://sub.hey77.uk/health
+
+production_data:
+- active_grok_accounts=782
+- concurrency_2=782
+- unsafe_concurrency=0
+- constraint=accounts_grok_concurrency_safe validated=true
