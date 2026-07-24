@@ -1,0 +1,44 @@
+version=0.1.163-r14
+source_commit=a408f02cf4dc
+upstream_tag=v0.1.163
+artifact=build/sub2api-0.1.163-r14-linux-amd64
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+size_bytes=111464610
+sha256=23573ff5d710f916fd4466b3a8252d1e8a80e395765de98d8d5b45921dd05218
+
+features:
+- Grok Responses outbound requests lower Codex custom-tool history even when tools is omitted or empty.
+- custom_tool_call input is preserved in function_call arguments.
+- custom_tool_call_output becomes function_call_output without losing call IDs or output content.
+- Historical tools do not enter the current turn's reversible client-tool mapping.
+- Native Grok function history, account model mappings, ordinary messages, and reasoning remain unchanged.
+
+verification:
+- Targeted Grok client-tool protocol tests passed.
+- Full go test -tags=unit ./internal/service passed.
+- OpenAI-to-Grok fallback handler tests passed.
+- Frontend production build passed.
+- Linux/amd64 embedded binary build passed.
+- Local and remote artifact SHA256 values matched.
+- Remote binary reported version 0.1.163-r14 and source commit a408f02cf4dc.
+
+deployment:
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=23573ff5d710f916fd4466b3a8252d1e8a80e395765de98d8d5b45921dd05218
+- previous_version=0.1.163-r13
+- previous_sha256=3a4cee93abc8d8a0fee9ec0acfc11b0893f58dcf33977433c13cd7005263f673
+- rollback_backup=/opt/sub2api/backups/sub2api_before_0.1.163-r14_deploy_20260724_143652
+- service_state=active/running
+- service_restarts_after_deploy=0
+- local_health=http://127.0.0.1:8080/health HTTP 200
+- public_health=https://sub.hey77.uk/health HTTP 200
+- post_deploy_error_priority_entries=0
+
+production_smoke:
+- API key 2 requested gpt-5.2 with no tools and paired custom_tool_call/custom_tool_call_output history.
+- The request returned HTTP 200 with output GROK_HISTORY_OK.
+- Routing logs recorded OpenAI group 2 switching to bound Grok group 12.
+- Usage row 29956 recorded requested_model=gpt-5.2 and upstream_model=grok-4.5.
