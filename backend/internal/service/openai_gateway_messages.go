@@ -581,7 +581,13 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	// accumulated delta events so the client receives the full content.
 	acc.SupplementResponseOutput(finalResponse)
 
-	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
+	clientResponse := finalResponse
+	if shouldScaleGrokClaudeClientUsage(account, originalModel, upstreamModel) {
+		responseCopy := *finalResponse
+		responseCopy.Usage = scaleGrokClaudeClientResponsesUsage(finalResponse.Usage)
+		clientResponse = &responseCopy
+	}
+	anthropicResp := apicompat.ResponsesToAnthropic(clientResponse, originalModel)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -946,8 +952,14 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			}
 		}
 
-		// Convert to Anthropic events
-		events := apicompat.ResponsesEventToAnthropicEvents(&event, state)
+		// Convert to Anthropic events. Client-visible context usage is scaled only
+		// for the 1M Claude alias backed by Grok's 500k prompt window; the billing
+		// snapshot above keeps the upstream's real token counts.
+		clientEvent := &event
+		if shouldScaleGrokClaudeClientUsage(account, originalModel, upstreamModel) {
+			clientEvent = grokClaudeClientResponsesEvent(&event)
+		}
+		events := apicompat.ResponsesEventToAnthropicEvents(clientEvent, state)
 		if !clientDisconnected {
 			for _, evt := range events {
 				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)

@@ -2402,6 +2402,37 @@ func TestForwardAsAnthropicForGrokStreamingPreservesCacheUsage(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"cache_read_input_tokens":2`)
 }
 
+func TestForwardAsAnthropicForGrokClaudeScalesOnlyClientVisibleContextUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"claude-opus-4-8","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Set("api_key", &APIKey{ID: 5403})
+
+	account := healthyGrokOAuthGatewayTestAccount(58, "access-token")
+	account.Credentials["model_mapping"] = map[string]any{"claude-opus-4-8": "grok-4.5"}
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{58: account},
+	}}
+	upstream := &httpUpstreamRecorder{resp: grokMessagesSSECompletedResponse("resp_grok_claude_context", 2)}
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 5, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.CacheReadInputTokens)
+	require.Contains(t, recorder.Body.String(), `"input_tokens":6`)
+	require.Contains(t, recorder.Body.String(), `"cache_read_input_tokens":5`)
+}
+
 func grokMessagesSSECompletedResponse(responseID string, cachedTokens int) *http.Response {
 	body := strings.Join([]string{
 		fmt.Sprintf(`data: {"type":"response.completed","response":{"id":%q,"object":"response","model":"grok-4.3","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7,"input_tokens_details":{"cached_tokens":%d}}}}`, responseID, cachedTokens),

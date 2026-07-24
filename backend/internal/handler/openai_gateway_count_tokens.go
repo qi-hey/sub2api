@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -48,6 +49,9 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 		requestLogger(c, "handler.openai_gateway.grok_count_tokens").Warn("grok_count_tokens.local_estimate_failed", zap.Error(err))
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
+	}
+	if strings.EqualFold(strings.TrimSpace(parsedReq.Model), "claude-opus-4-8") {
+		estimated = service.ScaleGrokClaudeClientInputTokens(estimated)
 	}
 
 	setOpsRequestContext(c, parsedReq.Model, false)
