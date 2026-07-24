@@ -65,6 +65,83 @@ func TestPatchGrokResponsesBodyWithClientToolsLowersCodexProtocol(t *testing.T) 
 	require.False(t, gjson.GetBytes(patched, "input.4.namespace").Exists())
 }
 
+func TestPatchGrokResponsesBodyWithClientToolsLowersHistoryWithoutTools(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		toolsJSON string
+	}{
+		{name: "tools omitted"},
+		{name: "tools empty", toolsJSON: `,"tools":[]`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			body := []byte(fmt.Sprintf(`{
+				"model":"gpt-5.6-sol"%s,
+				"input":[
+					{"type":"custom_tool_call","id":"old_custom","call_id":"old_custom_call","name":"apply_patch","input":"*** Begin Patch"},
+					{"type":"custom_tool_call_output","call_id":"old_custom_call","output":{"ok":true}},
+					{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
+				]
+			}`, tt.toolsJSON))
+
+			patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+			require.NoError(t, err)
+			require.Empty(t, mapping.CustomTools)
+			require.False(t, mapping.ToolSearch)
+			require.Empty(t, mapping.NamespaceTools)
+			require.Equal(t, "grok-4.5", gjson.GetBytes(patched, "model").String())
+			require.Equal(t, "function_call", gjson.GetBytes(patched, "input.0.type").String())
+			require.JSONEq(t, `{"input":"*** Begin Patch"}`, gjson.GetBytes(patched, "input.0.arguments").String())
+			require.False(t, gjson.GetBytes(patched, "input.0.input").Exists())
+			require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.1.type").String())
+			require.JSONEq(t, `{"ok":true}`, gjson.GetBytes(patched, "input.1.output").String())
+			require.Equal(t, "continue", gjson.GetBytes(patched, "input.2.content.0.text").String())
+		})
+	}
+}
+
+func TestAdaptGrokResponsesClientToolsLowersOrphanHistoryWithoutChangingMapping(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"tools":[{"type":"custom","name":"current_tool"}],
+		"input":[
+			{"type":"custom_tool_call","call_id":"old_call","name":"retired_tool","input":"old memory"},
+			{"type":"custom_tool_call_output","call_id":"old_call","output":"old result"}
+		]
+	}`)
+
+	patched, mapping, err := adaptGrokResponsesClientTools(body)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{"current_tool": true}, mapping.CustomTools)
+	require.Equal(t, "function_call", gjson.GetBytes(patched, "input.0.type").String())
+	require.JSONEq(t, `{"input":"old memory"}`, gjson.GetBytes(patched, "input.0.arguments").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.1.type").String())
+}
+
+func TestAdaptGrokResponsesClientToolsLeavesNativeGrokFunctionHistoryUntouched(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"tools":[],
+		"input":[
+			{"type":"function_call","call_id":"native_call","name":"native_tool","arguments":"{\"path\":\"a.txt\"}"},
+			{"type":"function_call_output","call_id":"native_call","output":"native result"}
+		]
+	}`)
+
+	patched, mapping, err := adaptGrokResponsesClientTools(body)
+	require.NoError(t, err)
+	require.Equal(t, body, patched)
+	require.Empty(t, mapping.CustomTools)
+	require.False(t, mapping.ToolSearch)
+	require.Empty(t, mapping.NamespaceTools)
+}
+
 func TestPatchGrokResponsesBodyWithClientToolsRewritesEveryToolChoice(t *testing.T) {
 	t.Parallel()
 

@@ -27,6 +27,12 @@ func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClie
 	if err != nil {
 		return body, apicompat.ResponsesClientToolMapping{}, err
 	}
+	// Codex can omit tools after they have already appeared earlier in a long
+	// conversation. Lower any remaining custom-tool history for xAI without
+	// adding it to the current turn's reversible client-tool mapping.
+	if lowerGrokResponsesCustomToolHistory(requestBody["input"]) {
+		changed = true
+	}
 	if !changed {
 		return body, mapping, nil
 	}
@@ -35,6 +41,63 @@ func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClie
 		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("encode Grok Responses client tools: %w", err)
 	}
 	return rebuilt, mapping, nil
+}
+
+func lowerGrokResponsesCustomToolHistory(value any) bool {
+	changed := false
+	var visit func(any)
+	visit = func(value any) {
+		switch typed := value.(type) {
+		case []any:
+			for _, item := range typed {
+				visit(item)
+			}
+		case map[string]any:
+			switch strings.TrimSpace(grokResponsesToolProtocolString(typed["type"])) {
+			case "custom_tool_call":
+				typed["type"] = "function_call"
+				input := grokResponsesToolProtocolString(typed["input"])
+				arguments, _ := json.Marshal(map[string]string{"input": input})
+				typed["arguments"] = string(arguments)
+				delete(typed, "input")
+				changed = true
+			case "custom_tool_call_output":
+				typed["type"] = "function_call_output"
+				normalizeGrokResponsesToolOutput(typed)
+				changed = true
+			}
+			for _, child := range typed {
+				visit(child)
+			}
+		}
+	}
+	visit(value)
+	return changed
+}
+
+func grokResponsesToolProtocolString(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
+func normalizeGrokResponsesToolOutput(item map[string]any) {
+	output, exists := item["output"]
+	if !exists {
+		return
+	}
+	if _, ok := output.(string); ok {
+		return
+	}
+	if output == nil {
+		item["output"] = ""
+		return
+	}
+	encoded, err := json.Marshal(output)
+	if err != nil {
+		item["output"] = ""
+		return
+	}
+	item["output"] = string(encoded)
 }
 
 func hasGrokResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMapping) bool {

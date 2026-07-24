@@ -248,6 +248,27 @@ Upgrade acceptance checklist:
 - Other models preserve deterministic multi-group routing.
 - HTTP Responses, Chat Completions, Messages, and Responses WebSocket tests pass.
 
+### Grok outbound custom-tool history compatibility
+
+Grok Responses forwarding must lower Codex-only custom-tool history even when
+the current request omits `tools` or sends an empty tool list. Before sending a
+request to xAI, remaining `custom_tool_call` items become `function_call` items
+with their freeform input preserved in `arguments`, and
+`custom_tool_call_output` items become `function_call_output` items.
+
+This cleanup is Grok-outbound only. Historical tools must not be added to the
+current turn's reversible client-tool mapping, and native Grok
+`function_call`/`function_call_output` items, account model mappings, ordinary
+messages, and reasoning items must remain unchanged.
+
+Upgrade acceptance checklist:
+
+- Missing and empty `tools` both lower custom-tool history in `input`.
+- Retired historical tools are lowered without entering the current mapping.
+- IDs, call IDs, names, freeform input, outputs, and ordinary messages survive.
+- Native Grok function-tool history is a no-op.
+- Grok protocol, service, and OpenAI-to-Grok fallback tests pass.
+
 ### Grok Forbidden account maintenance
 
 The account status filter includes a downstream-only `forbidden` value for
