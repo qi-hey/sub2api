@@ -1,0 +1,40 @@
+version=0.1.165-r19
+source_commit=f7ea0ed90
+upstream_tag=v0.1.165
+target=linux/amd64
+build_tags=embed
+remote_artifact=/opt/sub2api/builds/0.1.165-r19/sub2api-0.1.165-r19-linux-amd64
+sha256=996dcf9fc13a12666ea6e949e507c8d0278da1e3aa1c6d21482b26b34c5a6ade
+source_archive_sha256=80f86679b218dbf08a7c26a0eaf18dcf139bbc417417f06d554e338a341cd139
+
+feature:
+- Account management adds More Actions -> Tools -> Bind Proxy by Group.
+- The dialog selects one active group and one active proxy and displays the live group account count.
+- Confirmation overwrites existing proxy bindings for every account in the group, independent of account-list pagination.
+- The operation reuses POST /api/v1/admin/accounts/bulk-update with filters.group and a ten-minute client timeout.
+- Existing R18 downstream customizations remain in the v0.1.165 merge.
+
+verification:
+- pnpm install --frozen-lockfile passed with pnpm 9.15.9.
+- Frontend lint, typecheck, and production build passed on Windows.
+- Frontend full suite passed: 196 files, 1336 tests.
+- Linux pnpm install --frozen-lockfile and production build passed on the VPS.
+- go test ./... -count=1 passed with Go 1.26.5.
+- go vet ./... passed.
+- Linux/amd64 embed build passed and version self-check reported 0.1.165-r19.
+- Production binary SHA256 matches the verified build artifact.
+- Local and public health endpoints returned HTTP 200 after deployment.
+- systemd reported active, NRestarts=0, with no post-start panic/fatal/migration failure.
+- A production gpt-5.6-sol Responses request completed with HTTP 200 after deployment.
+- Signed-in browser verification showed v0.1.165-r19 and opened the Bind Proxy by Group dialog without submitting an update.
+
+deployment:
+- deployed_at_local=2026-07-26T13:21:56+08:00
+- deployed_binary=/opt/sub2api/sub2api
+- previous_version=0.1.163-r18
+- rollback_binary=/opt/sub2api/sub2api.r18-before-r19-20260726_052100
+- full_backup=/opt/sub2api/backups/sub2api_before_0.1.165-r19_deploy_20260726_052100
+- database_backup_sha256=2858d4af0e21b7016e095c5fce423a3e2fdc9fa36932370016646effcfdd3181
+- service_state=active/running
+- local_health=http://127.0.0.1:8080/health HTTP 200
+- public_health=https://sub.hey77.uk/health HTTP 200
