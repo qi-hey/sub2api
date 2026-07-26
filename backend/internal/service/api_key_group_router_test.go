@@ -201,6 +201,35 @@ func TestResolveAPIKeyRequestPlatformRejectsUnboundPlatform(t *testing.T) {
 	require.ErrorIs(t, err, ErrAPIKeyGroupNotBound)
 }
 
+func TestResolveAPIKeyRequestPlatformFallsBackToCompositeGroup(t *testing.T) {
+	compositeID := int64(20)
+	key := &APIKey{
+		GroupID:  &compositeID,
+		Group:    &Group{ID: compositeID, Platform: PlatformComposite, Status: StatusActive},
+		GroupIDs: []int64{compositeID},
+		Groups:   []Group{{ID: compositeID, Platform: PlatformComposite, Status: StatusActive}},
+	}
+
+	for _, platform := range []string{PlatformOpenAI, PlatformGrok, PlatformAnthropic} {
+		selected, err := ResolveAPIKeyRequestPlatform(key, platform)
+		require.NoError(t, err)
+		require.Equal(t, compositeID, *selected.GroupID)
+		require.Equal(t, PlatformComposite, selected.Group.Platform)
+	}
+}
+
+func TestResolveAPIKeyRequestPlatformPrefersDirectGroupOverComposite(t *testing.T) {
+	key := testMultiGroupRoutingAPIKey()
+	key.GroupIDs = append(key.GroupIDs, 20)
+	key.Groups = append(key.Groups, Group{ID: 20, Platform: PlatformComposite, Status: StatusActive})
+
+	selected, err := ResolveAPIKeyRequestPlatform(key, PlatformGrok)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(12), *selected.GroupID)
+	require.Equal(t, PlatformGrok, selected.Group.Platform)
+}
+
 func testMultiGroupRoutingAPIKey() *APIKey {
 	defaultID := int64(2)
 	return &APIKey{

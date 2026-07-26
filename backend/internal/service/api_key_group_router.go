@@ -53,8 +53,17 @@ func resolveAPIKeyRequestPlatform(apiKey *APIKey, platform string) (*APIKey, err
 			matches = append(matches, group)
 		}
 	}
+	// A composite group resolves its concrete target later from the request model.
+	// Keep direct platform bindings preferred, and use composite only as a fallback.
 	if len(matches) == 0 {
-		return nil, ErrAPIKeyGroupNotBound
+		for _, group := range groups {
+			if group.Platform == PlatformComposite {
+				matches = append(matches, group)
+			}
+		}
+		if len(matches) == 0 {
+			return nil, ErrAPIKeyGroupNotBound
+		}
 	}
 	if len(matches) == 1 {
 		return selectResolvedAPIKeyGroup(apiKey, matches[0])

@@ -120,7 +120,10 @@ func (r *openAIToGrokFallbackRoute) platform() string {
 	if r == nil || r.currentAPIKey == nil || r.currentAPIKey.Group == nil {
 		return service.PlatformOpenAI
 	}
-	return openAICompatibleRequestPlatform(r.currentAPIKey)
+	if r.currentAPIKey.Group.Platform == service.PlatformGrok {
+		return service.PlatformGrok
+	}
+	return service.PlatformOpenAI
 }
 
 func (r *openAIToGrokFallbackRoute) switched() bool {
