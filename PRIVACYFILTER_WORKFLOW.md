@@ -3,13 +3,11 @@
 This repository keeps the Sub2API upstream source plus downstream customizations
 that must survive every upstream update.
 
-## Next upstream upgrade
+## Current downstream release
 
-The next planned upstream base is `v0.1.165` or `v0.1.166`, selected only after
-reviewing both releases. Follow `SUB2API_V165_V166_UPGRADE_PLAN.md` rather than
-deploying `v0.1.164` directly.
-
-That upgrade must retain three fixes introduced in upstream `v0.1.164`:
+The current downstream base is upstream `v0.1.165`, released as
+`0.1.165-r19`. The upgrade retained the three fixes introduced in upstream
+`v0.1.164`:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
 - OpenAI incomplete-stream proxy quarantine (`47ad29db3`);
@@ -264,6 +262,29 @@ Upgrade acceptance checklist:
 - A successful fallback session remains on Grok on its next request.
 - Other models preserve deterministic multi-group routing.
 - HTTP Responses, Chat Completions, Messages, and Responses WebSocket tests pass.
+
+### Group-wide proxy binding tool
+
+R19 adds `More Actions -> Tools -> Bind Proxy by Group` to account management.
+The administrator selects one group and one active proxy, sees the server
+reported `account_count`, and confirms a warning that existing account proxies
+will be overwritten. The operation targets the complete group regardless of
+the account table's current page.
+
+The frontend calls the existing filtered bulk-update contract with a ten-minute
+client timeout:
+
+```json
+{
+  "filters": { "group": "<group-id>" },
+  "proxy_id": 123
+}
+```
+
+The selector never offers the no-proxy option in this workflow. On completion,
+the account list, active proxy list and group account counts are refreshed.
+Future upstream upgrades must retain the typed API wrapper, modal, menu entry,
+translations and tests.
 
 ### Grok outbound custom-tool history compatibility
 

@@ -133,6 +133,12 @@
                         </span>
                         <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
                       </button>
+                      <button class="account-tools-menu-item" @click="openGroupProxyBinding">
+                        <span class="account-tools-menu-icon bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
+                          <Icon name="link" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.accounts.groupProxyBinding.menu') }}</span>
+                      </button>
                       <button class="account-tools-menu-item" @click="openGrokSSOReauth">
                         <span class="account-tools-menu-icon bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300">
                           <Icon name="key" size="sm" />
@@ -471,6 +477,13 @@
     </ConfirmDialog>
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
+    <GroupProxyBindingModal
+      :show="showGroupProxyBinding"
+      :groups="groups"
+      :proxies="proxies"
+      @close="showGroupProxyBinding = false"
+      @updated="handleGroupProxyBindingUpdated"
+    />
     <GrokSSOReauthModal
       :show="showGrokSSOReauth"
       @close="showGrokSSOReauth = false"
@@ -519,6 +532,7 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
+import GroupProxyBindingModal from '@/components/admin/account/GroupProxyBindingModal.vue'
 import GrokSSOReauthModal from '@/components/admin/account/GrokSSOReauthModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
@@ -591,6 +605,7 @@ const showTest = ref(false)
 const showStats = ref(false)
 const showErrorPassthrough = ref(false)
 const showTLSFingerprintProfiles = ref(false)
+const showGroupProxyBinding = ref(false)
 const showGrokSSOReauth = ref(false)
 const deletingForbidden = ref(false)
 const edAcc = ref<Account | null>(null)
@@ -1094,6 +1109,7 @@ const isAnyModalOpen = computed(() => {
     showSchedulePanel.value ||
     showErrorPassthrough.value ||
     showTLSFingerprintProfiles.value ||
+    showGroupProxyBinding.value ||
     showGrokSSOReauth.value
   )
 })
@@ -1263,6 +1279,25 @@ const openErrorPassthrough = () => {
 const openTLSFingerprintProfiles = () => {
   closeAccountToolsDropdown()
   showTLSFingerprintProfiles.value = true
+}
+
+const openGroupProxyBinding = () => {
+  closeAccountToolsDropdown()
+  showGroupProxyBinding.value = true
+}
+
+const refreshAccountLookups = async () => {
+  const [proxyItems, groupItems] = await Promise.all([
+    adminAPI.proxies.getAllWithCount(),
+    adminAPI.groups.getAll()
+  ])
+  proxies.value = proxyItems
+  groups.value = groupItems
+}
+
+const handleGroupProxyBindingUpdated = async () => {
+  showGroupProxyBinding.value = false
+  await Promise.all([reload(), refreshAccountLookups()])
 }
 
 const openGrokSSOReauth = () => {
@@ -2186,9 +2221,7 @@ onMounted(async () => {
   load()
   loadUpstreamBillingProbeGlobalState()
   try {
-    const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
-    proxies.value = p
-    groups.value = g
+    await refreshAccountLookups()
   } catch (error) {
     console.error('Failed to load proxies/groups:', error)
   }
