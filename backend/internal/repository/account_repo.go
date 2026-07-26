@@ -1123,8 +1123,18 @@ func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, o
 	}
 	if options.RequireRefreshToken {
 		query += `
-			AND credentials ? 'refresh_token'
-			AND btrim(credentials->>'refresh_token') <> ''`
+			AND (
+				(
+					credentials ? 'refresh_token'
+					AND btrim(credentials->>'refresh_token') <> ''
+				)
+				OR (
+					platform = 'grok'
+					AND credentials ? 'sso_token'
+					AND btrim(credentials->>'sso_token') <> ''
+					AND lower(btrim(credentials->>'sso_auto_refresh')) = 'true'
+				)
+			)`
 	}
 	if options.ExcludeRetryCooldown {
 		query += `

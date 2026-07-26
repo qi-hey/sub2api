@@ -3,6 +3,23 @@
 This repository keeps the Sub2API upstream source plus downstream customizations
 that must survive every upstream update.
 
+## Next upstream upgrade
+
+The next planned upstream base is `v0.1.165` or `v0.1.166`, selected only after
+reviewing both releases. Follow `SUB2API_V165_V166_UPGRADE_PLAN.md` rather than
+deploying `v0.1.164` directly.
+
+That upgrade must retain three fixes introduced in upstream `v0.1.164`:
+
+- OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
+- OpenAI incomplete-stream proxy quarantine (`47ad29db3`);
+- Grok HTTP 402 scheduling exclusion (`ca0d3314c`).
+
+For Grok 402, retain the downstream deterministic `schedulable=false` policy;
+do not regress to upstream's temporary cooldown-only behavior. Upstream
+composite groups are additive and must not replace API-key-bound OpenAI-to-Grok
+runtime fallback.
+
 ## Required downstream customizations
 
 ### OpenAI new-account model defaults and fallback mapping

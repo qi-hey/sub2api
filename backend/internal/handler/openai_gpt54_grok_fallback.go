@@ -30,17 +30,18 @@ const (
 // openAIToGrokFallbackRoute owns request-local state for the one-way OpenAI-to-Grok
 // transition. The authenticated API key remains immutable.
 type openAIToGrokFallbackRoute struct {
-	sourceAPIKey        *service.APIKey
-	fallbackAPIKey      *service.APIKey
-	currentAPIKey       *service.APIKey
-	currentSubscription *service.UserSubscription
-	requestedModel      string
-	eligible            bool
-	currentRoute        int
-	didSwitch           bool
-	reason              string
-	failedByRoute       [2]map[int64]struct{}
-	retriesByRoute      [2]map[int64]int
+	sourceAPIKey         *service.APIKey
+	fallbackAPIKey       *service.APIKey
+	currentAPIKey        *service.APIKey
+	currentSubscription  *service.UserSubscription
+	requestedModel       string
+	eligible             bool
+	freshFallbackAllowed bool
+	currentRoute         int
+	didSwitch            bool
+	reason               string
+	failedByRoute        [2]map[int64]struct{}
+	retriesByRoute       [2]map[int64]int
 }
 
 func newOpenAIToGrokFallbackRoute(apiKey *service.APIKey, subscription *service.UserSubscription, requestedModel string) *openAIToGrokFallbackRoute {
@@ -59,12 +60,13 @@ func newOpenAIToGrokFallbackRoute(apiKey *service.APIKey, subscription *service.
 		}
 	}
 	return &openAIToGrokFallbackRoute{
-		sourceAPIKey:        apiKey,
-		fallbackAPIKey:      fallbackAPIKey,
-		currentAPIKey:       apiKey,
-		currentSubscription: subscription,
-		requestedModel:      strings.ToLower(strings.TrimSpace(requestedModel)),
-		eligible:            eligible,
+		sourceAPIKey:         apiKey,
+		fallbackAPIKey:       fallbackAPIKey,
+		currentAPIKey:        apiKey,
+		currentSubscription:  subscription,
+		requestedModel:       strings.ToLower(strings.TrimSpace(requestedModel)),
+		eligible:             eligible,
+		freshFallbackAllowed: true,
 		failedByRoute: [2]map[int64]struct{}{
 			openAIToGrokPrimaryRouteIndex:  make(map[int64]struct{}),
 			openAIToGrokFallbackRouteIndex: make(map[int64]struct{}),
@@ -81,7 +83,17 @@ func markOpenAIToGrokFallbackEligibility(c *gin.Context, route *openAIToGrokFall
 }
 
 func (r *openAIToGrokFallbackRoute) canFallback() bool {
+	return r != nil && r.eligible && r.freshFallbackAllowed && !r.didSwitch
+}
+
+func (r *openAIToGrokFallbackRoute) canRestoreContinuity() bool {
 	return r != nil && r.eligible && !r.didSwitch
+}
+
+func (r *openAIToGrokFallbackRoute) setFreshFallbackAllowed(allowed bool) {
+	if r != nil {
+		r.freshFallbackAllowed = allowed
+	}
 }
 
 func (r *openAIToGrokFallbackRoute) apiKey() *service.APIKey {
@@ -223,14 +235,49 @@ func (h *OpenAIGatewayHandler) restoreOpenAIToGrokFallbackContinuity(
 	requiredCapability service.OpenAIEndpointCapability,
 	requireCompact bool,
 ) (bool, error) {
-	if h == nil || h.gatewayService == nil || c == nil || c.Request == nil || route == nil || !route.canFallback() {
+	if h == nil || h.gatewayService == nil || c == nil || c.Request == nil || route == nil || !route.canRestoreContinuity() {
 		return false, nil
 	}
 	fallbackAPIKey := route.fallbackAPIKey
 	if fallbackAPIKey == nil {
 		return false, nil
 	}
-	if !h.gatewayService.HasOpenAICompatibleRouteContinuity(
+	owner, err := h.gatewayService.GetOpenAICompatibleRouteOwner(
+		c.Request.Context(),
+		route.sourceAPIKey.GroupID,
+		sessionHash,
+	)
+	if err != nil {
+		return false, err
+	}
+	if owner == service.PlatformOpenAI {
+		route.setFreshFallbackAllowed(false)
+		markOpenAIToGrokFallbackEligibility(c, route)
+		return false, nil
+	}
+
+	if owner == "" {
+		legacyOwner := h.gatewayService.GetOpenAICompatibleStickyRouteOwner(
+			c.Request.Context(),
+			route.sourceAPIKey.GroupID,
+			sessionHash,
+		)
+		if legacyOwner == service.PlatformOpenAI {
+			route.setFreshFallbackAllowed(false)
+			markOpenAIToGrokFallbackEligibility(c, route)
+			if sessionHash != "" {
+				_ = h.gatewayService.BindOpenAICompatibleRouteOwner(
+					c.Request.Context(),
+					route.sourceAPIKey.GroupID,
+					sessionHash,
+					service.PlatformOpenAI,
+				)
+			}
+			return false, nil
+		}
+	}
+
+	hasGrokContinuity := h.gatewayService.HasOpenAICompatibleRouteContinuity(
 		c.Request.Context(),
 		fallbackAPIKey.GroupID,
 		service.PlatformGrok,
@@ -239,7 +286,8 @@ func (h *OpenAIGatewayHandler) restoreOpenAIToGrokFallbackContinuity(
 		route.requestedModel,
 		requiredCapability,
 		requireCompact,
-	) {
+	)
+	if owner != service.PlatformGrok && !hasGrokContinuity {
 		return false, nil
 	}
 	subscription, err := h.loadOpenAIToGrokFallbackSubscription(c.Request.Context(), fallbackAPIKey)
@@ -251,7 +299,31 @@ func (h *OpenAIGatewayHandler) restoreOpenAIToGrokFallbackContinuity(
 	}
 	route.setSubscription(subscription)
 	applyOpenAIToGrokFallbackRouteToContext(c, route)
+	if owner == "" && sessionHash != "" {
+		_ = h.gatewayService.BindOpenAICompatibleRouteOwner(
+			c.Request.Context(),
+			route.sourceAPIKey.GroupID,
+			sessionHash,
+			service.PlatformGrok,
+		)
+	}
 	return true, nil
+}
+
+func (h *OpenAIGatewayHandler) bindOpenAIToGrokFallbackRouteOwner(
+	ctx context.Context,
+	route *openAIToGrokFallbackRoute,
+	sessionHash string,
+) error {
+	if h == nil || h.gatewayService == nil || route == nil || !route.eligible || route.sourceAPIKey == nil {
+		return nil
+	}
+	return h.gatewayService.BindOpenAICompatibleRouteOwner(
+		ctx,
+		route.sourceAPIKey.GroupID,
+		sessionHash,
+		route.platform(),
+	)
 }
 
 func (h *OpenAIGatewayHandler) loadOpenAIToGrokFallbackSubscription(ctx context.Context, apiKey *service.APIKey) (*service.UserSubscription, error) {

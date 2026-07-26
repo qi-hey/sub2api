@@ -27,7 +27,7 @@ func TestAPIKeyAuthGroupRoutingSelectsRequestLocalGroupAndRestoresBody(t *testin
 	}}
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	apiKeyService := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
-	body := `{"model":"gpt-5.4","input":"hello"}`
+	body := `{"model":"claude-opus-4-8","input":"hello"}`
 
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
@@ -87,7 +87,7 @@ func TestAPIKeyAuthGroupRoutingUsesSelectedGroupForSubscription(t *testing.T) {
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
 	router.POST("/v1/responses", func(c *gin.Context) { c.Status(http.StatusNoContent) })
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claude-opus-4-8"}`))
 	req.Header.Set("x-api-key", source.Key)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -186,7 +186,7 @@ func TestAPIKeyAuthGroupRoutingReturnsStructuredUnboundError(t *testing.T) {
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
 	router.POST("/v1/responses", func(c *gin.Context) { c.Status(http.StatusNoContent) })
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claude-opus-4-8"}`))
 	req.Header.Set("x-api-key", source.Key)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -290,7 +290,7 @@ func TestAPIKeyAuthGroupRoutingPreservesUnavailableNonDefaultContract(t *testing
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
 	router.POST("/v1/responses", func(c *gin.Context) { c.Status(http.StatusNoContent) })
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claude-opus-4-8"}`))
 	req.Header.Set("x-api-key", source.Key)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -320,7 +320,7 @@ func TestAPIKeyAuthGroupRoutingDoesNotChooseBetweenUnavailableNonDefaultGroups(t
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
 	router.POST("/v1/responses", func(c *gin.Context) { c.Status(http.StatusNoContent) })
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claude-opus-4-8"}`))
 	req.Header.Set("x-api-key", source.Key)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

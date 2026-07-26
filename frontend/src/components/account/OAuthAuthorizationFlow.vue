@@ -255,35 +255,65 @@
               </p>
             </div>
 
-            <button
-              type="button"
-              class="btn btn-primary w-full"
-              :disabled="loading || !ssoCookieInput.trim()"
-              @click="handleImportSSO"
-            >
-              <svg
-                v-if="loading"
-                class="-ml-1 mr-2 h-4 w-4 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+              <input
+                ref="ssoFileInputRef"
+                type="file"
+                accept=".txt,.csv,text/plain"
+                class="hidden"
+                @change="handleSSOFileSelected"
+              />
+              <button
+                type="button"
+                class="btn btn-secondary"
+                :disabled="loading"
+                @click="ssoFileInputRef?.click()"
               >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              <Icon v-else name="sparkles" size="sm" class="mr-2" />
-              {{ loading ? t(getOAuthKey('convertingSSO')) : t(getOAuthKey('convertSSOAndCreate')) }}
-            </button>
+                <Icon name="upload" size="sm" class="mr-2" />
+                {{ t(getOAuthKey('uploadSSOFile')) }}
+              </button>
+            </div>
+
+            <div class="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                class="btn btn-primary w-full"
+                :disabled="loading || !ssoCookieInput.trim()"
+                @click="handleImportSSO"
+              >
+                <svg
+                  v-if="loading"
+                  class="-ml-1 mr-2 h-4 w-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                <Icon v-else name="sparkles" size="sm" class="mr-2" />
+                {{ loading ? t(getOAuthKey('convertingSSO')) : t(getOAuthKey('convertSSOAndCreate')) }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary w-full"
+                :disabled="loading || !ssoCookieInput.trim()"
+                @click="handleReauthSSO"
+              >
+                <Icon name="refresh" size="sm" class="mr-2" />
+                {{ loading ? t(getOAuthKey('convertingSSO')) : t(getOAuthKey('convertSSOAndReauth')) }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -877,6 +907,7 @@ const emit = defineEmits<{
   'import-codex-session': [content: string]
   'import-codex-pat': [accessToken: string]
   'import-sso': [content: string]
+  'reauth-sso': [content: string]
   'update:inputMethod': [method: AuthInputMethod]
 }>()
 
@@ -1064,9 +1095,32 @@ const handleImportCodexPAT = () => {
   }
 }
 
+const ssoFileInputRef = ref<HTMLInputElement | null>(null)
+
+const handleSSOFileSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement | null
+  const file = input?.files?.[0]
+  if (!file) return
+  try {
+    const content = await file.text()
+    const normalized = content.replace(/\r\n/g, '\n').trim()
+    if (normalized) {
+      ssoCookieInput.value = normalized
+    }
+  } finally {
+    if (input) input.value = ''
+  }
+}
+
 const handleImportSSO = () => {
   if (ssoCookieInput.value.trim()) {
     emit('import-sso', ssoCookieInput.value.trim())
+  }
+}
+
+const handleReauthSSO = () => {
+  if (ssoCookieInput.value.trim()) {
+    emit('reauth-sso', ssoCookieInput.value.trim())
   }
 }
 

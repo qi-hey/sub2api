@@ -1428,6 +1428,36 @@ func (a *Account) GetGrokRefreshToken() string {
 	return a.GetCredential("refresh_token")
 }
 
+// GetGrokSSOToken returns the persisted Grok Web SSO cookie used as a
+// long-lived fallback when the Build OAuth refresh_token is missing/invalid.
+func (a *Account) GetGrokSSOToken() string {
+	if !a.IsGrokOAuth() {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("sso_token"))
+}
+
+// GrokSSOAutoRefreshEnabled is intentionally opt-in. Persisting an SSO cookie
+// for manual recovery must not make background refresh perform web SSO flows.
+func (a *Account) GrokSSOAutoRefreshEnabled() bool {
+	if !a.IsGrokOAuth() || a.Credentials == nil {
+		return false
+	}
+	value, ok := a.Credentials["sso_auto_refresh"]
+	if !ok {
+		return false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		enabled, err := strconv.ParseBool(strings.TrimSpace(typed))
+		return err == nil && enabled
+	default:
+		return false
+	}
+}
+
 func (a *Account) GetOpenAIIDToken() string {
 	if !a.IsOpenAIOAuth() {
 		return ""

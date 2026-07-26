@@ -1,0 +1,59 @@
+version=0.1.163-r16
+source_commit=20b8643a4b34-dirty
+upstream_tag=v0.1.163
+artifact=build/sub2api-0.1.163-r16-linux-amd64
+archive=build/sub2api-0.1.163-r16-linux-amd64.tar.gz
+target=linux/amd64
+build_tags=embed
+size_bytes=111542434
+sha256=6768f09522d3ad069e1ea4ee2d9dc5ed6952a540b96ce25fd2cb5b09a33e892f
+
+features:
+- OpenAI-to-Grok fallback is limited to first-turn requests without history.
+- Conversation provider ownership prevents established OpenAI sessions from switching to Grok after account failures.
+- Legacy R14/R15 sticky bindings can restore OpenAI conversation ownership.
+- Responses, Chat Completions, Anthropic Messages, and WebSocket requests all detect conversation history.
+- Grok-bound prompts use a 468000-token safety budget and preserve complete tool call/result pairs while trimming old turns.
+- Requests that cannot be trimmed safely fail locally with a clear HTTP 400 instead of exceeding Grok's 500000-token limit.
+- OpenAI custom_tool_call IDs are retained only when they use the required ctc prefix; invalid fc_ IDs are removed.
+- Admin API POST /api/v1/admin/grok/sso-reauth supports preview, conflict detection, and confirmed batch application.
+- Grok SSO background fallback is disabled by default and requires credentials.sso_auto_refresh=true.
+- Accounts -> More Actions includes the Batch Grok SSO Reauthentication upload/paste modal.
+
+verification:
+- go test ./... -count=1 passed.
+- go vet ./... passed.
+- Targeted unit and fallback integration test suites passed.
+- Full frontend Vitest suite passed.
+- pnpm typecheck passed.
+- pnpm lint:check passed.
+- pnpm build passed.
+- git diff --check passed.
+- Linux/amd64 embed build passed.
+- Local and remote candidate SHA256 values matched.
+- Deployed binary reports 0.1.163-r16.
+- Unauthenticated POST /api/v1/admin/grok/sso-reauth returns HTTP 401, confirming the route is mounted.
+- Authenticated Accounts page exposes the SSO entry and modal upload, paste, preview, and apply controls.
+- Browser console contained no errors during the UI smoke test.
+- Production gpt-5.4 smoke test returned HTTP 200 from official OpenAI account 32085.
+- Production gpt-5.4 request with explicit message history returned HTTP 200 from OpenAI without switching to Grok.
+
+deployment:
+- deployed_at_utc=2026-07-24T17:21:45Z
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=6768f09522d3ad069e1ea4ee2d9dc5ed6952a540b96ce25fd2cb5b09a33e892f
+- previous_version=0.1.163-r14
+- previous_sha256=23573ff5d710f916fd4466b3a8252d1e8a80e395765de98d8d5b45921dd05218
+- rollback_backup=/opt/sub2api/backups/sub2api-r14-before-r16-20260724T172144Z
+- service_state=active/running
+- service_restarts_after_deploy=0
+- local_health=http://127.0.0.1:8080/health HTTP 200
+- public_health=https://sub.hey77.uk/health HTTP 200
+- post_deploy_panic_count=0
+- post_deploy_fatal_count=0
+
+production_config_followup:
+- Restored account 43 anthropic-beta=context-1m-2025-08-07 after Any Router began requiring 1M context.
+- account_43_backup=/opt/sub2api/backups/account43-before-r16-1m-beta-20260724T173237Z.json
+- Account 43 no longer receives the local missing-1M-beta rejection.
+- Any Router itself continued returning HTTP 503 for Claude models after accepting the beta header; this is an external upstream outage, not an R16 process or routing failure.

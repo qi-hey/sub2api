@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -206,6 +207,24 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if err != nil {
 			releaseUpstreamCtx()
 			return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
+		}
+		var budgetResult grokPromptBudgetResult
+		body, budgetResult, err = applyGrokResponsesPromptBudget(body)
+		if err != nil {
+			releaseUpstreamCtx()
+			_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(http.StatusBadRequest, err.Error()))
+			return nil, err
+		}
+		if budgetResult.RemovedTurns > 0 || budgetResult.RemovedToolSets > 0 {
+			slog.Info("grok_ws_prompt_context_reduced",
+				"account_id", account.ID,
+				"turn", turn,
+				"estimated_before", budgetResult.EstimatedBefore,
+				"estimated_after", budgetResult.EstimatedAfter,
+				"removed_turns", budgetResult.RemovedTurns,
+				"removed_tool_sets", budgetResult.RemovedToolSets,
+				"removed_items", budgetResult.RemovedItems,
+			)
 		}
 		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token, grokCacheIdentity, s.cfg)
 	} else {

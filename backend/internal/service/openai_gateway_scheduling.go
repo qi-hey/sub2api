@@ -20,10 +20,13 @@ import (
 )
 
 const (
-	openCodeSessionAffinityHeader = "X-Session-Affinity"
-	openCodeSessionIDHeader       = "X-Session-Id"
-	openCodeNativeSessionHeader   = "X-OpenCode-Session"
-	codeBuddyConversationHeader   = "X-Conversation-ID"
+	openCodeSessionAffinityHeader    = "X-Session-Affinity"
+	openCodeSessionIDHeader          = "X-Session-Id"
+	openCodeNativeSessionHeader      = "X-OpenCode-Session"
+	codeBuddyConversationHeader      = "X-Conversation-ID"
+	openAICompatibleRouteOwnerPrefix = "route-owner:"
+	openAICompatibleRouteOwnerOpenAI = int64(1)
+	openAICompatibleRouteOwnerGrok   = int64(2)
 )
 
 // explicitOpenAIHeaderSessionID resolves stable conversation identifiers sent
@@ -170,6 +173,96 @@ func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, groupID *i
 		ttl = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
 	}
 	return s.setStickySessionAccountID(ctx, groupID, sessionHash, accountID, ttl)
+}
+
+// BindOpenAICompatibleRouteOwner records the provider that owns a logical
+// conversation. Unlike account stickiness, this marker survives account
+// failover and prevents provider-specific history from crossing platforms.
+func (s *OpenAIGatewayService) BindOpenAICompatibleRouteOwner(
+	ctx context.Context,
+	sourceGroupID *int64,
+	sessionHash string,
+	platform string,
+) error {
+	if s == nil || s.cache == nil || strings.TrimSpace(sessionHash) == "" {
+		return nil
+	}
+	owner := openAICompatibleRouteOwnerOpenAI
+	if platform == PlatformGrok {
+		owner = openAICompatibleRouteOwnerGrok
+	}
+	ttl := openaiStickySessionTTL
+	if s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
+		ttl = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
+	}
+	return s.cache.SetSessionAccountID(
+		ctx,
+		derefGroupID(sourceGroupID),
+		openAICompatibleRouteOwnerPrefix+strings.TrimSpace(sessionHash),
+		owner,
+		ttl,
+	)
+}
+
+// GetOpenAICompatibleRouteOwner returns the provider previously bound to the
+// logical conversation. An empty result means the session predates R16 or has
+// not completed a provider request yet.
+func (s *OpenAIGatewayService) GetOpenAICompatibleRouteOwner(
+	ctx context.Context,
+	sourceGroupID *int64,
+	sessionHash string,
+) (string, error) {
+	if s == nil || s.cache == nil || strings.TrimSpace(sessionHash) == "" {
+		return "", nil
+	}
+	owner, err := s.cache.GetSessionAccountID(
+		ctx,
+		derefGroupID(sourceGroupID),
+		openAICompatibleRouteOwnerPrefix+strings.TrimSpace(sessionHash),
+	)
+	if err != nil {
+		// Route ownership is a safety refinement over the existing sticky
+		// scheduler. Cache misses/outages keep the legacy continuity path usable.
+		return "", nil
+	}
+	switch owner {
+	case openAICompatibleRouteOwnerOpenAI:
+		return PlatformOpenAI, nil
+	case openAICompatibleRouteOwnerGrok:
+		return PlatformGrok, nil
+	default:
+		return "", nil
+	}
+}
+
+// GetOpenAICompatibleStickyRouteOwner recovers the provider from a legacy
+// session binding without requiring the bound account to remain schedulable.
+// This prevents an account becoming invalid from turning its existing session
+// into a fresh cross-provider fallback candidate during an R16 upgrade.
+func (s *OpenAIGatewayService) GetOpenAICompatibleStickyRouteOwner(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+) string {
+	if s == nil || s.accountRepo == nil || strings.TrimSpace(sessionHash) == "" {
+		return ""
+	}
+	accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash)
+	if err != nil || accountID <= 0 {
+		return ""
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return ""
+	}
+	switch account.Platform {
+	case PlatformOpenAI:
+		return PlatformOpenAI
+	case PlatformGrok:
+		return PlatformGrok
+	default:
+		return ""
+	}
 }
 
 // HasOpenAIRouteContinuity reports whether an OpenAI group owns an existing,

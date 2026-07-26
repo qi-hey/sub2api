@@ -84,6 +84,24 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	if err != nil {
 		return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
 	}
+	patchedBody, budgetResult, err := applyGrokResponsesPromptBudget(patchedBody)
+	if err != nil {
+		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"type": "invalid_request_error", "message": err.Error(), "param": "input",
+		}})
+		return nil, err
+	}
+	if budgetResult.RemovedTurns > 0 || budgetResult.RemovedToolSets > 0 {
+		slog.Info("grok_prompt_context_reduced",
+			"account_id", account.ID,
+			"estimated_before", budgetResult.EstimatedBefore,
+			"estimated_after", budgetResult.EstimatedAfter,
+			"removed_turns", budgetResult.RemovedTurns,
+			"removed_tool_sets", budgetResult.RemovedToolSets,
+			"removed_items", budgetResult.RemovedItems,
+		)
+	}
 
 	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {

@@ -1,0 +1,51 @@
+version=0.1.163-r18
+source_commit=20b8643a4b34-dirty
+upstream_tag=v0.1.163
+artifact=build/sub2api-0.1.163-r18-linux-amd64
+archive=build/sub2api-0.1.163-r18-linux-amd64.tar.gz
+target=linux/amd64
+build_tags=embed
+size_bytes=111550626
+sha256=387ae8f6676fc999cea71b66f61410c89e65ed63922af051be43414ce119709e
+archive_size_bytes=33199553
+archive_sha256=faef1878d7119dd3ddfa92d9a56e0af921e419715e9fb1dc9555fc2b90834cd3
+
+fix:
+- OpenAI Responses tool_search_call history now accepts only native tsc-prefixed item IDs.
+- Foreign fc-prefixed IDs on tool_search_call items are removed before forwarding to OpenAI.
+- call_id is preserved, so tool_search_call and tool_search_output pairing remains intact.
+- Custom tool ctc IDs and ordinary function call fc IDs retain their existing behavior.
+
+root_cause:
+- R16 added per-item ID namespace filtering for custom_tool_call but omitted tool_search_call.
+- A replayed tool_search_call therefore retained an fc-prefixed item ID.
+- OpenAI correctly rejected that item because tool search item IDs must begin with tsc_.
+
+verification:
+- Exact regression fixture from production error #6540 passed.
+- Targeted OpenAI Codex transform tests passed.
+- go test ./internal/service -count=1 passed.
+- go test ./... -count=1 passed.
+- go vet ./... passed.
+- git diff --check passed.
+- Linux/amd64 embed build passed.
+- Running production SHA256 matches the local artifact.
+- Production gpt-5.6-sol Responses smoke test returned HTTP 200 and R18_OK through OpenAI account 32085.
+- Local and public health endpoints returned HTTP 200.
+- Post-recovery journal panic/fatal count was zero.
+
+deployment:
+- deployed_at_local=2026-07-25T10:12:25+08:00
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=387ae8f6676fc999cea71b66f61410c89e65ed63922af051be43414ce119709e
+- previous_version=0.1.163-r17
+- rollback_backup=/opt/sub2api/backups/sub2api_before_0.1.163-r18_deploy_20260725_100911
+- service_state=active/running
+- service_restarts=7
+- local_health=http://127.0.0.1:8080/health HTTP 200
+- public_health=https://sub.hey77.uk/health HTTP 200
+
+deployment_recovery:
+- A compressed deployment attempt initially installed the tar stream instead of the archive member and caused temporary automatic restarts.
+- The already-uploaded verified R18 binary was restored immediately from the deployment backup.
+- Final running binary SHA256, version, service state, and both health endpoints were reverified.

@@ -161,6 +161,39 @@ export async function resetQuota(id: number): Promise<GrokQuotaResetResult> {
   return data
 }
 
+
+export interface GrokSSOReauthRequest extends GrokSSOToOAuthRequest {
+  create_if_missing?: boolean
+  preview?: boolean
+  confirmed?: boolean
+}
+
+export interface GrokSSOReauthPreviewItem {
+  index: number
+  email?: string
+  sub?: string
+  action: 'update' | 'create' | 'unmatched' | 'conflict' | string
+  account_id?: number
+  account_name?: string
+  error?: string
+}
+
+export interface GrokSSOReauthResponse {
+  preview?: GrokSSOReauthPreviewItem[]
+  updated: GrokSSOToOAuthItemResult[]
+  created: GrokSSOToOAuthItemResult[]
+  failed: GrokSSOToOAuthItemResult[]
+}
+
+export async function reauthFromSSO(payload: GrokSSOReauthRequest): Promise<GrokSSOReauthResponse> {
+  const { data } = await apiClient.post<GrokSSOReauthResponse>(
+    '/admin/grok/sso-reauth',
+    payload,
+    { timeout: getGrokSSOImportTimeout(payload.sso_tokens?.length || 1) }
+  )
+  return data
+}
+
 export async function createFromSSO(payload: GrokSSOToOAuthRequest): Promise<GrokSSOToOAuthResponse> {
   const { data } = await apiClient.post<GrokSSOToOAuthResponse>(
     '/admin/grok/sso-to-oauth',
@@ -170,4 +203,4 @@ export async function createFromSSO(payload: GrokSSOToOAuthRequest): Promise<Gro
   return data
 }
 
-export default { generateAuthUrl, exchangeCode, refreshGrokToken, queryQuota, resetQuota, createFromSSO }
+export default { generateAuthUrl, exchangeCode, refreshGrokToken, queryQuota, resetQuota, createFromSSO, reauthFromSSO }

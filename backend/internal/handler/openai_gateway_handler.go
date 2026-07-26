@@ -375,6 +375,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(apiKey)
 	route := newOpenAIToGrokFallbackRoute(apiKey, subscription, reqModel)
+	route.setFreshFallbackAllowed(openAIResponsesAllowsFreshGrokFallback(body))
 	markOpenAIToGrokFallbackEligibility(c, route)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
@@ -748,6 +749,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), nil)
 		}
+		if err := h.bindOpenAIToGrokFallbackRouteOwner(c.Request.Context(), route, sessionHash); err != nil {
+			reqLog.Warn("openai.bind_route_owner_failed", zap.Error(err))
+		}
 
 		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 		userAgent := c.GetHeader("User-Agent")
@@ -1045,6 +1049,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	}
 
 	route := newOpenAIToGrokFallbackRoute(apiKey, subscription, reqModel)
+	route.setFreshFallbackAllowed(anthropicMessagesAllowFreshGrokFallback(body))
 	markOpenAIToGrokFallbackEligibility(c, route)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
@@ -1363,6 +1368,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(currentRoutingModel), true, result.FirstTokenMs)
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(currentRoutingModel), true, nil)
+		}
+		if err := h.bindOpenAIToGrokFallbackRouteOwner(c.Request.Context(), route, sessionHash); err != nil {
+			reqLog.Warn("openai_messages.bind_route_owner_failed", zap.Error(err))
 		}
 
 		userAgent := c.GetHeader("User-Agent")
@@ -1822,6 +1830,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(apiKey)
 	route := newOpenAIToGrokFallbackRoute(apiKey, subscription, reqModel)
+	route.setFreshFallbackAllowed(openAIResponsesAllowsFreshGrokFallback(firstMessage))
 	markOpenAIToGrokFallbackEligibility(c, route)
 	sessionHash := h.gatewayService.GenerateSessionHashWithFallback(
 		c,
@@ -2156,6 +2165,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				if result == nil {
 					return
+				}
+				if err := h.bindOpenAIToGrokFallbackRouteOwner(ctx, route, sessionHash); err != nil {
+					reqLog.Warn("openai.websocket_bind_route_owner_failed", zap.Error(err))
 				}
 				// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
 				if account.Type == service.AccountTypeOAuth && !account.IsShadow() {

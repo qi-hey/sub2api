@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -200,18 +201,49 @@ func (s *GrokOAuthService) RefreshAccountToken(ctx context.Context, account *Acc
 	if err != nil {
 		return nil, err
 	}
-	refreshToken := account.GetCredential("refresh_token")
-	if strings.TrimSpace(refreshToken) == "" {
+
+	var refreshErr error
+	refreshToken := strings.TrimSpace(account.GetCredential("refresh_token"))
+	if refreshToken != "" {
+		clientID := account.GetCredential("client_id")
+		tokenInfo, err := s.RefreshToken(ctx, refreshToken, proxyURL, clientID)
+		if err == nil {
+			tokenInfo.SubscriptionTier = account.GetCredential("subscription_tier")
+			tokenInfo.EntitlementStatus = account.GetCredential("entitlement_status")
+			return tokenInfo, nil
+		}
+		refreshErr = err
+		// Only fall back to SSO for permanent credential failures. Transient
+		// network/upstream errors should keep retrying the cheap refresh path.
+		if !isNonRetryableRefreshError(err) {
+			return nil, err
+		}
+	}
+
+	ssoToken := ""
+	if account.GrokSSOAutoRefreshEnabled() {
+		ssoToken = strings.TrimSpace(account.GetGrokSSOToken())
+	}
+	if ssoToken == "" {
+		if refreshErr != nil {
+			return nil, refreshErr
+		}
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_NO_REFRESH_TOKEN", "no refresh token available")
 	}
 
-	clientID := account.GetCredential("client_id")
-	tokenInfo, err := s.RefreshToken(ctx, refreshToken, proxyURL, clientID)
+	tokenInfo, err := s.ConvertFromSSO(ctx, ssoToken, account.ProxyID)
 	if err != nil {
+		if refreshErr != nil {
+			return nil, fmt.Errorf("refresh_token failed (%v); sso fallback failed: %w", refreshErr, err)
+		}
 		return nil, err
 	}
-	tokenInfo.SubscriptionTier = account.GetCredential("subscription_tier")
-	tokenInfo.EntitlementStatus = account.GetCredential("entitlement_status")
+	if tokenInfo.SubscriptionTier == "" {
+		tokenInfo.SubscriptionTier = account.GetCredential("subscription_tier")
+	}
+	if tokenInfo.EntitlementStatus == "" {
+		tokenInfo.EntitlementStatus = account.GetCredential("entitlement_status")
+	}
 	return tokenInfo, nil
 }
 

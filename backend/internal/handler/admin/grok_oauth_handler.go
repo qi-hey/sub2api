@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/mail"
 	"strconv"
 	"strings"
 	"sync"
@@ -298,6 +299,12 @@ type grokSSOImportJob struct {
 	token string
 }
 
+type grokSSOImportToken struct {
+	index     int
+	token     string
+	emailHint string
+}
+
 type grokSSOImportWorkerResult struct {
 	created bool
 	item    GrokSSOToOAuthItemResult
@@ -374,6 +381,9 @@ func (h *GrokOAuthHandler) createAccountFromSSOToken(ctx context.Context, req Gr
 	}
 
 	credentials := grokSSOImportCredentials(h.grokOAuthService.BuildAccountCredentials(tokenInfo), req.Credentials)
+	if normalizedSSO := xai.NormalizeSSOToken(token); normalizedSSO != "" {
+		credentials["sso_token"] = normalizedSSO
+	}
 	name := grokSSOImportAccountName(req.Name, tokenInfo, index, total)
 	expiresAt, autoPauseOnExpired := grokSSOImportExpiry(req.ExpiresAt, req.AutoPauseOnExpired, tokenInfo)
 	account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
@@ -459,27 +469,57 @@ func cloneGrokSSOValue(value any) any {
 }
 
 func normalizeSSOImportTokens(tokens []string, single string) []string {
+	parsed := normalizeSSOImportItems(tokens, single)
+	result := make([]string, 0, len(parsed))
+	for _, item := range parsed {
+		result = append(result, item.token)
+	}
+	return result
+}
+
+func normalizeSSOImportItems(tokens []string, single string) []grokSSOImportToken {
 	items := make([]string, 0, len(tokens)+1)
 	if strings.TrimSpace(single) != "" {
 		items = append(items, single)
 	}
 	items = append(items, tokens...)
 	seen := make(map[string]struct{}, len(items))
-	result := make([]string, 0, len(items))
+	result := make([]grokSSOImportToken, 0, len(items))
+	index := 0
 	for _, item := range items {
 		parts := strings.Split(strings.NewReplacer(",", "\n", "\r", "\n").Replace(item), "\n")
-		for _, token := range parts {
-			if token = xai.NormalizeSSOToken(token); token == "" {
+		for _, value := range parts {
+			if strings.TrimSpace(value) == "" {
+				continue
+			}
+			index++
+			token, emailHint := parseSSOImportToken(value)
+			if token == "" {
 				continue
 			}
 			if _, ok := seen[token]; ok {
 				continue
 			}
 			seen[token] = struct{}{}
-			result = append(result, token)
+			result = append(result, grokSSOImportToken{index: index, token: token, emailHint: emailHint})
 		}
 	}
 	return result
+}
+
+func parseSSOImportToken(value string) (token, emailHint string) {
+	value = strings.TrimSpace(value)
+	if prefix, remainder, found := strings.Cut(value, ":"); found && isSSOImportEmailHint(prefix) {
+		emailHint = strings.ToLower(strings.TrimSpace(prefix))
+		value = remainder
+	}
+	return xai.NormalizeSSOToken(value), emailHint
+}
+
+func isSSOImportEmailHint(value string) bool {
+	value = strings.TrimSpace(value)
+	parsed, err := mail.ParseAddress(value)
+	return err == nil && strings.EqualFold(parsed.Address, value)
 }
 
 func grokSSOImportAccountName(base string, tokenInfo *service.GrokTokenInfo, index, total int) string {

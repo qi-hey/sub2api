@@ -1,0 +1,54 @@
+version=0.1.163-r17
+source_commit=20b8643a4b34-dirty
+upstream_tag=v0.1.163
+artifact=build/sub2api-0.1.163-r17-linux-amd64
+archive=build/sub2api-0.1.163-r17-linux-amd64.tar.gz
+target=linux/amd64
+build_tags=embed
+size_bytes=111550626
+sha256=02c2b7e19e86d87391f98ecae9b6947958d9e9ef381a739ade26634261d004da
+archive_size_bytes=33198045
+archive_sha256=6c4b2e9d0a68fd33173a887e7cded1726250659cb1f756432a9ccf68c6eec3c5
+
+features:
+- Batch Grok SSO reauthentication accepts email:SSO, raw SSO, sso=..., and Cookie header input formats.
+- Preview normalizes and deduplicates tokens without exchanging every uploaded SSO credential.
+- email:SSO preview matches the email prefix to an existing Grok OAuth account.
+- Apply always converts the SSO token and rejects entries whose converted identity differs from the uploaded email.
+- Conflicting duplicate target accounts remain blocked.
+- The frontend explains that preview is required and shows executable and skipped counts.
+- Apply is enabled when at least one valid update exists and sends only valid matched entries.
+- Unmatched or conflicting entries are skipped instead of blocking the entire batch.
+- Completion feedback reports updated, failed, and skipped totals.
+
+verification:
+- Targeted Grok SSO backend tests passed.
+- go test ./... -count=1 passed.
+- go vet ./... passed.
+- Full frontend Vitest suite passed.
+- pnpm typecheck passed.
+- pnpm lint:check passed.
+- pnpm build passed.
+- git diff --check passed.
+- Linux/amd64 embed build passed.
+- Local and remote candidate SHA256 values matched.
+- Production Accounts page reports v0.1.163-r17.
+- A synthetic email:SSO preview produced one executable update and zero skipped entries.
+- The production Apply button became enabled after preview; the synthetic credential was not applied.
+- Browser console contained no site errors during the UI smoke test; observed warnings came from an unrelated Chrome extension.
+- Public health returned HTTP 200 after deployment.
+
+deployment:
+- deployed_at_local=2026-07-25T02:06:16+08:00
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=02c2b7e19e86d87391f98ecae9b6947958d9e9ef381a739ade26634261d004da
+- previous_version=0.1.163-r16
+- rollback_backup=/opt/sub2api/backups/sub2api_before_0.1.163-r17_deploy_20260725_020616
+- service_state=active/running
+- service_restarts_after_deploy=0
+- local_health=http://127.0.0.1:8080/health HTTP 200
+- public_health=https://sub.hey77.uk/health HTTP 200
+
+followup:
+- A later SSH journal recheck could not run because the management endpoint refused the connection.
+- The public health endpoint and authenticated production UI remained available.

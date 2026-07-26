@@ -1500,9 +1500,18 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 			// "Expected an ID that begins with 'fc'"）。item_* 形式的 id
 			// 来自客户端回放，需要删除。
 			// 注意：function_call_output 等 output 类的 id 无此约束，不动。
-			if id, ok := m["id"].(string); ok && id != "" && !strings.HasPrefix(id, "fc") {
-				ensureCopy()
-				delete(newItem, "id")
+			if id, ok := m["id"].(string); ok && id != "" {
+				expectedPrefix := "fc"
+				switch typ {
+				case "custom_tool_call":
+					expectedPrefix = "ctc"
+				case "tool_search_call":
+					expectedPrefix = "tsc"
+				}
+				if !strings.HasPrefix(id, expectedPrefix) {
+					ensureCopy()
+					delete(newItem, "id")
+				}
 			}
 		} else if typ == "message" {
 			// 同理，message 类 item 的 id 必须以 "msg" 开头（上游校验

@@ -22,12 +22,15 @@ func (r *GrokTokenRefresher) CacheKey(account *Account) string {
 }
 
 func (r *GrokTokenRefresher) CanRefresh(account *Account) bool {
-	return account != nil && account.Platform == PlatformGrok && account.Type == AccountTypeOAuth &&
-		strings.TrimSpace(account.GetGrokRefreshToken()) != ""
+	if account == nil || account.Platform != PlatformGrok || account.Type != AccountTypeOAuth {
+		return false
+	}
+	return strings.TrimSpace(account.GetGrokRefreshToken()) != "" ||
+		(account.GrokSSOAutoRefreshEnabled() && strings.TrimSpace(account.GetGrokSSOToken()) != "")
 }
 
 func (r *GrokTokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
-	if account == nil || strings.TrimSpace(account.GetGrokRefreshToken()) == "" {
+	if account == nil || !r.CanRefresh(account) {
 		return false
 	}
 	if strings.TrimSpace(account.GetGrokAccessToken()) == "" {

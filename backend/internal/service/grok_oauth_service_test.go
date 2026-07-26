@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -15,7 +16,9 @@ import (
 
 type grokOAuthClientStub struct {
 	refreshResponse *xai.TokenResponse
+	refreshErr      error
 	ssoResponse     *xai.TokenResponse
+	ssoErr          error
 	exchangeCalls   int
 }
 
@@ -25,10 +28,16 @@ func (s *grokOAuthClientStub) ExchangeCode(context.Context, string, string, stri
 }
 
 func (s *grokOAuthClientStub) RefreshToken(context.Context, string, string, string) (*xai.TokenResponse, error) {
+	if s.refreshErr != nil {
+		return nil, s.refreshErr
+	}
 	return s.refreshResponse, nil
 }
 
 func (s *grokOAuthClientStub) ConvertSSOToBuild(context.Context, string, string) (*xai.TokenResponse, error) {
+	if s.ssoErr != nil {
+		return nil, s.ssoErr
+	}
 	return s.ssoResponse, nil
 }
 
@@ -113,4 +122,85 @@ func TestGrokOAuthServiceConvertFromSSOExtractsBuildClaims(t *testing.T) {
 func makeGrokOAuthJWT(claims map[string]any) string {
 	payload, _ := json.Marshal(claims)
 	return "header." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
+}
+
+func TestGrokTokenRefresherCanRefreshWithSSOOnly(t *testing.T) {
+	refresher := NewGrokTokenRefresher(nil)
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"sso_token":        "sso-cookie",
+			"sso_auto_refresh": true,
+		},
+	}
+	require.True(t, refresher.CanRefresh(account))
+	require.True(t, refresher.NeedsRefresh(account, time.Hour))
+}
+
+func TestGrokTokenRefresherDoesNotUseSSOWithoutOptIn(t *testing.T) {
+	refresher := NewGrokTokenRefresher(nil)
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"sso_token": "sso-cookie",
+		},
+	}
+	require.False(t, refresher.CanRefresh(account))
+}
+
+func TestGrokOAuthServiceRefreshAccountTokenFallsBackToSSO(t *testing.T) {
+	client := &grokOAuthClientStub{
+		refreshErr: errors.New("invalid_grant: refresh token expired"),
+		ssoResponse: &xai.TokenResponse{
+			AccessToken:  "access-from-sso",
+			RefreshToken: "refresh-from-sso",
+			TokenType:    "Bearer",
+			ExpiresIn:    3600,
+		},
+	}
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"refresh_token":    "dead-refresh",
+			"sso_token":        "sso-cookie",
+			"sso_auto_refresh": true,
+			"email":            "user@example.com",
+		},
+	}
+
+	info, err := svc.RefreshAccountToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, "access-from-sso", info.AccessToken)
+	require.Equal(t, "refresh-from-sso", info.RefreshToken)
+}
+
+func TestGrokOAuthServiceRefreshAccountTokenUsesSSOWhenRefreshMissing(t *testing.T) {
+	client := &grokOAuthClientStub{
+		ssoResponse: &xai.TokenResponse{
+			AccessToken:  "access-only-sso",
+			RefreshToken: "refresh-only-sso",
+			TokenType:    "Bearer",
+			ExpiresIn:    3600,
+		},
+	}
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"sso_token":        "sso-cookie",
+			"sso_auto_refresh": true,
+		},
+	}
+
+	info, err := svc.RefreshAccountToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, "access-only-sso", info.AccessToken)
+	require.Equal(t, "refresh-only-sso", info.RefreshToken)
 }

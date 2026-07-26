@@ -1,0 +1,37 @@
+version=0.1.163-r15
+upstream_tag=v0.1.163
+artifact=build/sub2api-0.1.163-r15-linux-amd64
+target=linux/amd64
+build_tags=embed
+size_bytes=111489186
+sha256=99c7476323cd1344aa2a13b005cf51ab79967ed86b10fd639dffd9557c01a301
+
+features:
+- Grok SSO import now persists credentials.sso_token for later refresh fallback.
+- Token refresh prefers refresh_token; on missing/permanent RT failure falls back to SSO ConvertSSOToBuild.
+- Background refresh candidates include Grok accounts that only have sso_token.
+- New admin API POST /admin/grok/sso-reauth matches SSO by email/sub and updates existing accounts.
+- Frontend SSO flow supports file upload + "Refresh Existing Accounts" action.
+
+usage:
+1. Open Accounts -> Add Account -> Grok -> SSO Cookie Import.
+2. Paste SSO keys or click Upload SSO File.
+3. For expired existing accounts, click "Refresh Existing Accounts" (not create).
+4. After success, sso_token is stored; scheduled refresh can recover access tokens later.
+5. New SSO-created accounts automatically store sso_token.
+
+verification:
+- Unit tests for SSO-only CanRefresh and RefreshAccountToken SSO fallback passed.
+- Handler Grok SSO unit tests passed.
+- Frontend production build passed.
+- Linux/amd64 embed binary built and deployed.
+- Remote sha256 matched local artifact.
+- Version reported 0.1.163-r15.
+- Local/public health HTTP 200.
+
+deployment:
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=99c7476323cd1344aa2a13b005cf51ab79967ed86b10fd639dffd9557c01a301
+- previous_backup=/opt/sub2api/backups/sub2api_before_0.1.163-r15_deploy_20260724_231516
+- service_state=active
+- public_health=https://sub.hey77.uk/health HTTP 200

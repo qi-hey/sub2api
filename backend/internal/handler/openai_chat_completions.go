@@ -115,6 +115,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(apiKey)
 	route := newOpenAIToGrokFallbackRoute(apiKey, subscription, reqModel)
+	route.setFreshFallbackAllowed(openAIChatAllowsFreshGrokFallback(body))
 	markOpenAIToGrokFallbackEligibility(c, route)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
@@ -413,6 +414,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), true, result.FirstTokenMs)
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), true, nil)
+		}
+		if err := h.bindOpenAIToGrokFallbackRouteOwner(c.Request.Context(), route, sessionHash); err != nil {
+			reqLog.Warn("openai_chat_completions.bind_route_owner_failed", zap.Error(err))
 		}
 
 		userAgent := c.GetHeader("User-Agent")

@@ -3184,6 +3184,7 @@
         @import-codex-session="handleOpenAIImportCodexSession"
         @import-codex-pat="handleOpenAIImportCodexPAT"
         @import-sso="handleGrokImportSSO"
+        @reauth-sso="handleGrokReauthSSO"
       />
 
     </div>
@@ -5482,6 +5483,104 @@ const handleGrokImportSSO = async (ssoInput: string) => {
     }
   } catch (error: any) {
     grokOAuth.error.value = error.response?.data?.detail || error.message || t('admin.accounts.oauth.grok.failedToConvertSSO')
+    appStore.showError(grokOAuth.error.value)
+  } finally {
+    grokOAuth.loading.value = false
+  }
+}
+
+const handleGrokReauthSSO = async (ssoInput: string) => {
+  const ssoTokens = ssoInput
+    .split('\n')
+    .map((token) => token.trim())
+    .filter((token) => token)
+  if (ssoTokens.length === 0) return
+  if (!validateGrokOAuthUpstreamConfig()) return
+
+  grokOAuth.loading.value = true
+  grokOAuth.error.value = ''
+
+  const credentials: Record<string, unknown> = {}
+  applyGrokOAuthUpstreamConfig(credentials)
+  const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  }
+  if (!applyTempUnschedConfig(credentials)) {
+    grokOAuth.loading.value = false
+    return
+  }
+
+  try {
+    const preview = await adminAPI.grok.reauthFromSSO({
+      sso_tokens: ssoTokens,
+      proxy_id: form.proxy_id,
+      preview: true,
+      confirmed: false,
+      create_if_missing: false
+    })
+    const previewItems = preview.preview || []
+    const previewFailures = previewItems.filter((item) => item.action !== 'update' || item.error)
+    if (previewItems.length !== ssoTokens.length || previewFailures.length > 0) {
+      grokOAuth.error.value = previewFailures
+        .map((item) => '#' + item.index + ': ' + (item.error || item.action))
+        .join('\n') || t('admin.accounts.grokSSOReauth.resolveConflicts')
+      appStore.showWarning(t('admin.accounts.grokSSOReauth.resolveConflicts'))
+      return
+    }
+    if (!window.confirm(t('common.confirm'))) return
+
+    const result = await adminAPI.grok.reauthFromSSO({
+      sso_tokens: ssoTokens,
+      name: form.name || undefined,
+      notes: form.notes || undefined,
+      proxy_id: form.proxy_id,
+      group_ids: form.group_ids,
+      credentials,
+      concurrency: form.concurrency,
+      load_factor: form.load_factor ?? undefined,
+      priority: form.priority,
+      rate_multiplier: form.rate_multiplier,
+      expires_at: form.expires_at,
+      auto_pause_on_expired: autoPauseOnExpired.value,
+      create_if_missing: false,
+      preview: false,
+      confirmed: true
+    })
+
+    const updatedCount = result.updated?.length || 0
+    const createdCount = result.created?.length || 0
+    const failedCount = result.failed?.length || 0
+    if (updatedCount + createdCount > 0 && failedCount === 0) {
+      appStore.showSuccess(
+        t('admin.accounts.oauth.grok.ssoReauthSuccess', {
+          updated: updatedCount,
+          created: createdCount,
+          failed: failedCount
+        })
+      )
+      emit('created')
+      handleClose()
+    } else if (updatedCount + createdCount > 0) {
+      appStore.showWarning(
+        t('admin.accounts.oauth.grok.ssoReauthSuccess', {
+          updated: updatedCount,
+          created: createdCount,
+          failed: failedCount
+        })
+      )
+      grokOAuth.error.value = (result.failed || [])
+        .map((item) => '#' + item.index + ': ' + (item.error || 'Unknown error'))
+        .join('\n')
+      emit('created')
+    } else {
+      grokOAuth.error.value = (result.failed || [])
+        .map((item) => '#' + item.index + ': ' + (item.error || 'Unknown error'))
+        .join('\n') || t('admin.accounts.oauth.grok.failedToReauthSSO')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    }
+  } catch (error: any) {
+    grokOAuth.error.value = error.response?.data?.detail || error.message || t('admin.accounts.oauth.grok.failedToReauthSSO')
     appStore.showError(grokOAuth.error.value)
   } finally {
     grokOAuth.loading.value = false

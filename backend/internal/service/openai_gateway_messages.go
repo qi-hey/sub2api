@@ -273,6 +273,22 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		if patchErr != nil {
 			return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", patchErr)
 		}
+		var budgetResult grokPromptBudgetResult
+		responsesBody, budgetResult, patchErr = applyGrokResponsesPromptBudget(responsesBody)
+		if patchErr != nil {
+			writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", patchErr.Error())
+			return nil, patchErr
+		}
+		if budgetResult.RemovedTurns > 0 || budgetResult.RemovedToolSets > 0 {
+			logger.L().Info("grok messages: prompt context reduced",
+				zap.Int64("account_id", account.ID),
+				zap.Int("estimated_before", budgetResult.EstimatedBefore),
+				zap.Int("estimated_after", budgetResult.EstimatedAfter),
+				zap.Int("removed_turns", budgetResult.RemovedTurns),
+				zap.Int("removed_tool_sets", budgetResult.RemovedToolSets),
+				zap.Int("removed_items", budgetResult.RemovedItems),
+			)
+		}
 	}
 
 	// 5. Get access token

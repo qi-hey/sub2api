@@ -471,6 +471,41 @@ func TestApplyCodexOAuthTransform_PreservesFunctionCallInputName(t *testing.T) {
 	require.Equal(t, "fc_1", item["call_id"])
 }
 
+func TestFilterCodexInputUsesCustomToolIDNamespace(t *testing.T) {
+	input := []any{
+		map[string]any{"type": "custom_tool_call", "id": "fc_foreign", "call_id": "call_1", "name": "apply_patch"},
+		map[string]any{"type": "custom_tool_call", "id": "ctc_native", "call_id": "call_2", "name": "apply_patch"},
+		map[string]any{"type": "function_call", "id": "fc_native", "call_id": "call_3", "name": "shell"},
+		map[string]any{"type": "tool_search_call", "id": "fc_220180f5-85b8-96a3-b711-8c1a1b065cf9_2", "call_id": "call_4"},
+		map[string]any{"type": "tool_search_call", "id": "tsc_native", "call_id": "call_5"},
+	}
+
+	filtered := filterCodexInputWithOptions(input, codexInputFilterOptions{
+		PreserveReferences: true,
+		PreserveCallIDs:    true,
+	})
+	require.Len(t, filtered, 5)
+
+	foreign := filtered[0].(map[string]any)
+	_, hasForeignID := foreign["id"]
+	require.False(t, hasForeignID)
+	require.Equal(t, "call_1", foreign["call_id"])
+
+	nativeCustom := filtered[1].(map[string]any)
+	require.Equal(t, "ctc_native", nativeCustom["id"])
+
+	nativeFunction := filtered[2].(map[string]any)
+	require.Equal(t, "fc_native", nativeFunction["id"])
+
+	foreignToolSearch := filtered[3].(map[string]any)
+	_, hasForeignToolSearchID := foreignToolSearch["id"]
+	require.False(t, hasForeignToolSearchID)
+	require.Equal(t, "call_4", foreignToolSearch["call_id"])
+
+	nativeToolSearch := filtered[4].(map[string]any)
+	require.Equal(t, "tsc_native", nativeToolSearch["id"])
+}
+
 func TestApplyCodexOAuthTransform_PreservesMCPToolCallIDAndName(t *testing.T) {
 	reqBody := map[string]any{
 		"model": "gpt-5.4",
