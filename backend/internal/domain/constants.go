@@ -42,6 +42,7 @@ const (
 	RedeemTypeConcurrency  = "concurrency"
 	RedeemTypeSubscription = "subscription"
 	RedeemTypeInvitation   = "invitation"
+	RedeemTypeGameToken    = "game_token" // loyalty reward voucher; balance only, no recharge/affiliate
 )
 
 // PromoCode status constants

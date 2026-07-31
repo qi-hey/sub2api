@@ -6225,6 +6225,169 @@
           </div>
         </div>
 
+        <div class="card" data-testid="game-loyalty-settings">
+          <div class="border-b border-gray-100 px-4 py-4 sm:px-6 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.gameLoyalty.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.gameLoyalty.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-4 sm:p-6">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div class="min-w-0">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.gameLoyalty.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.gameLoyalty.enabledHint') }}
+                </p>
+              </div>
+              <Toggle
+                v-model="form.game_loyalty_enabled"
+                class="self-start sm:self-auto"
+                data-testid="game-loyalty-enabled"
+              />
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 border-t border-gray-100 pt-5 sm:grid-cols-2 xl:grid-cols-4 dark:border-dark-700">
+              <div class="min-w-0">
+                <label for="game-loyalty-checkin" class="input-label">
+                  {{ t('admin.settings.features.gameLoyalty.checkinCredits') }}
+                  <span class="text-red-500">*</span>
+                </label>
+                <input
+                  id="game-loyalty-checkin"
+                  v-model.trim="form.game_loyalty_checkin_credits"
+                  type="text"
+                  inputmode="numeric"
+                  class="input"
+                  data-testid="game-loyalty-checkin"
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.gameLoyalty.checkinCreditsHint') }}
+                </p>
+              </div>
+
+              <div class="min-w-0">
+                <label for="game-loyalty-slot-bet" class="input-label">
+                  {{ t('admin.settings.features.gameLoyalty.slotBetCredits') }}
+                  <span class="text-red-500">*</span>
+                </label>
+                <input
+                  id="game-loyalty-slot-bet"
+                  v-model.trim="form.game_loyalty_slot_bet_credits"
+                  type="text"
+                  inputmode="numeric"
+                  class="input"
+                  data-testid="game-loyalty-slot-bet"
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.gameLoyalty.slotBetCreditsHint') }}
+                </p>
+              </div>
+
+              <div class="min-w-0">
+                <label for="game-loyalty-daily-limit" class="input-label">
+                  {{ t('admin.settings.features.gameLoyalty.dailyRewardLimit') }}
+                </label>
+                <input
+                  id="game-loyalty-daily-limit"
+                  v-model.trim="form.game_loyalty_daily_reward_limit"
+                  type="text"
+                  inputmode="numeric"
+                  class="input"
+                  data-testid="game-loyalty-daily-limit"
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.gameLoyalty.dailyRewardLimitHint') }}
+                </p>
+              </div>
+            </div>
+
+            <div class="space-y-4 border-t border-gray-100 pt-5 dark:border-dark-700">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ t('admin.settings.features.gameLoyalty.catalog') }}
+                  </h3>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.features.gameLoyalty.catalogHint') }}
+                  </p>
+                </div>
+                <button type="button" class="btn btn-secondary shrink-0" data-testid="game-loyalty-add-reward" @click="addGameLoyaltyReward">
+                  <Icon name="plus" size="xs" />
+                  {{ t('admin.settings.features.gameLoyalty.addReward') }}
+                </button>
+              </div>
+
+              <p
+                v-if="form.game_loyalty_reward_catalog.length === 0"
+                class="border-y border-dashed border-gray-200 py-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400"
+              >
+                {{ t('admin.settings.features.gameLoyalty.emptyCatalog') }}
+              </p>
+
+              <div
+                v-for="(reward, index) in form.game_loyalty_reward_catalog"
+                :key="reward.formKey"
+                class="border-t border-gray-200 pt-4 first:border-t-0 first:pt-0 dark:border-dark-700"
+                data-testid="game-loyalty-reward-row"
+              >
+                <div class="mb-3 flex items-center justify-between gap-3">
+                  <strong class="text-sm text-gray-900 dark:text-white">
+                    {{ t('admin.settings.features.gameLoyalty.rewardNumber', { number: index + 1 }) }}
+                  </strong>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                    :aria-label="t('admin.settings.features.gameLoyalty.removeReward')"
+                    :title="t('admin.settings.features.gameLoyalty.removeReward')"
+                    @click="removeGameLoyaltyReward(index)"
+                  >
+                    <Icon name="trash" size="sm" />
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div>
+                    <label class="input-label">{{ t('admin.settings.features.gameLoyalty.rewardId') }}</label>
+                    <input v-model.trim="reward.id" type="text" class="input" autocomplete="off" :data-testid="`game-loyalty-reward-id-${index}`" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('admin.settings.features.gameLoyalty.rewardTitle') }}</label>
+                    <input v-model.trim="reward.title" type="text" class="input" autocomplete="off" :data-testid="`game-loyalty-reward-title-${index}`" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('admin.settings.features.gameLoyalty.creditCost') }}</label>
+                    <input v-model.trim="reward.credit_cost" type="text" inputmode="numeric" class="input" :data-testid="`game-loyalty-reward-cost-${index}`" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('admin.settings.features.gameLoyalty.voucherValue') }}</label>
+                    <input v-model.trim="reward.voucher_value" type="text" inputmode="decimal" class="input" :data-testid="`game-loyalty-reward-value-${index}`" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('admin.settings.features.gameLoyalty.dailyStock') }}</label>
+                    <input v-model.trim="reward.daily_stock" type="text" inputmode="numeric" class="input" :data-testid="`game-loyalty-reward-stock-${index}`" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('admin.settings.features.gameLoyalty.expiryDays') }}</label>
+                    <input v-model.trim="reward.expiry_days" type="text" inputmode="numeric" class="input" :data-testid="`game-loyalty-reward-expiry-${index}`" />
+                  </div>
+                </div>
+
+                <div class="mt-3 flex items-center justify-end gap-3">
+                  <span class="text-sm text-gray-600 dark:text-gray-300">
+                    {{ t('admin.settings.features.gameLoyalty.enabledLabel') }}
+                  </span>
+                  <Toggle v-model="reward.enabled" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -8447,11 +8610,145 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown;
 }
 
+interface GameLoyaltyRewardForm {
+  formKey: string;
+  id: string;
+  title: string;
+  credit_cost: string;
+  voucher_value: string;
+  daily_stock: string;
+  expiry_days: string;
+  enabled: boolean;
+  titles?: Record<string, string>;
+}
+
+let gameLoyaltyRewardFormSequence = 0;
+
+function createGameLoyaltyRewardForm(
+  value: Partial<Omit<GameLoyaltyRewardForm, "formKey">> = {},
+): GameLoyaltyRewardForm {
+  gameLoyaltyRewardFormSequence += 1;
+  return {
+    formKey: `game-loyalty-reward-${gameLoyaltyRewardFormSequence}`,
+    id: value.id ?? "",
+    title: value.title ?? "",
+    credit_cost: value.credit_cost ?? "",
+    voucher_value: value.voucher_value ?? "",
+    daily_stock: value.daily_stock ?? "",
+    expiry_days: value.expiry_days ?? "0",
+    enabled: value.enabled ?? true,
+    titles: value.titles,
+  };
+}
+
+function parseGameLoyaltyRewardCatalog(raw: string): GameLoyaltyRewardForm[] {
+  try {
+    const parsed = JSON.parse(raw || "[]") as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((row) => {
+      const item = row && typeof row === "object"
+        ? row as Record<string, unknown>
+        : {};
+      const titles = item.titles && typeof item.titles === "object" && !Array.isArray(item.titles)
+        ? Object.fromEntries(
+            Object.entries(item.titles as Record<string, unknown>)
+              .filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+          )
+        : undefined;
+      return createGameLoyaltyRewardForm({
+        id: typeof item.id === "string" ? item.id : "",
+        title: typeof item.title === "string" ? item.title : "",
+        credit_cost: String(item.credit_cost ?? ""),
+        voucher_value: String(item.voucher_value ?? ""),
+        daily_stock: String(item.daily_stock ?? ""),
+        expiry_days: String(item.expiry_days ?? "0"),
+        enabled: item.enabled !== false,
+        titles,
+      });
+    });
+  } catch {
+    return [];
+  }
+}
+
+function serializeGameLoyaltyRewardCatalog(rows: GameLoyaltyRewardForm[]): string {
+  return JSON.stringify(rows.map((row) => ({
+    id: row.id.trim(),
+    title: row.title.trim(),
+    credit_cost: row.credit_cost.trim(),
+    voucher_value: row.voucher_value.trim(),
+    daily_stock: Number(row.daily_stock),
+    expiry_days: Number(row.expiry_days),
+    enabled: row.enabled,
+    ...(row.titles && Object.keys(row.titles).length > 0 ? { titles: row.titles } : {}),
+  })));
+}
+
+function addGameLoyaltyReward(): void {
+  const usedIDs = new Set(form.game_loyalty_reward_catalog.map((reward) => reward.id));
+  let suffix = form.game_loyalty_reward_catalog.length + 1;
+  while (usedIDs.has(`reward_${suffix}`)) suffix += 1;
+  form.game_loyalty_reward_catalog.push(createGameLoyaltyRewardForm({ id: `reward_${suffix}` }));
+}
+
+function removeGameLoyaltyReward(index: number): void {
+  form.game_loyalty_reward_catalog.splice(index, 1);
+}
+
+function isGameLoyaltyInteger(value: string, positive: boolean): boolean {
+  if (!/^\d+$/.test(value) || value.length > 19) return false;
+  try {
+    const parsed = BigInt(value);
+    return parsed <= 9223372036854775807n && (positive ? parsed > 0n : parsed >= 0n);
+  } catch {
+    return false;
+  }
+}
+
+function isGameLoyaltySlotBet(value: string, positive: boolean): boolean {
+  if (!isGameLoyaltyInteger(value, positive)) return false;
+  return BigInt(value) <= 10000n;
+}
+
+function isGameLoyaltySmallInteger(value: string, positive: boolean): boolean {
+  if (!/^\d{1,10}$/.test(value)) return false;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed <= 2147483647 && (positive ? parsed > 0 : parsed >= 0);
+}
+
+function isGameLoyaltyDecimal(value: string): boolean {
+  if (value.length > 32 || !/^(?:0|[1-9]\d{0,11})(?:\.\d{1,8})?$/.test(value)) return false;
+  return Number(value) > 0;
+}
+
+function isGameLoyaltyCatalogValid(rows: GameLoyaltyRewardForm[]): boolean {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    const id = row.id.trim();
+    const title = row.title.trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || ids.has(id)) return false;
+    if (title.length === 0 || Array.from(title).length > 128) return false;
+    if (!isGameLoyaltyInteger(row.credit_cost.trim(), true)) return false;
+    if (!isGameLoyaltyDecimal(row.voucher_value.trim())) return false;
+    if (!isGameLoyaltySmallInteger(row.daily_stock.trim(), true)) return false;
+    if (!isGameLoyaltySmallInteger(row.expiry_days.trim(), false)) return false;
+    ids.add(id);
+  }
+  return true;
+}
+
 type SettingsForm = Omit<
   SystemSettings,
   | "wechat_connect_open_enabled"
   | "wechat_connect_mp_enabled"
   | "wechat_connect_mobile_enabled"
+  | "game_wallet_enabled"
+  | "game_wallet_exchange_rate"
+  | "game_wallet_daily_limit"
+  | "game_loyalty_checkin_credits"
+  | "game_loyalty_slot_bet_credits"
+  | "game_loyalty_daily_reward_limit"
+  | "game_loyalty_reward_catalog"
 > & {
   smtp_password: string;
   turnstile_secret_key: string;
@@ -8464,6 +8761,10 @@ type SettingsForm = Omit<
   wechat_connect_open_enabled: boolean;
   wechat_connect_mp_enabled: boolean;
   wechat_connect_mobile_enabled: boolean;
+  game_loyalty_checkin_credits: string;
+  game_loyalty_slot_bet_credits: string;
+  game_loyalty_daily_reward_limit: string;
+  game_loyalty_reward_catalog: GameLoyaltyRewardForm[];
   oidc_connect_client_secret: string;
   github_oauth_client_secret: string;
   google_oauth_client_secret: string;
@@ -8505,6 +8806,11 @@ const form = reactive<SettingsForm>({
   login_agreement_updated_at: "2026-03-31",
   login_agreement_documents: defaultLoginAgreementDocuments(),
   default_balance: 0,
+  game_loyalty_enabled: false,
+  game_loyalty_checkin_credits: "0",
+  game_loyalty_slot_bet_credits: "0",
+  game_loyalty_daily_reward_limit: "0",
+  game_loyalty_reward_catalog: [],
   default_platform_quotas: normalizePlatformQuotasMap() as DefaultPlatformQuotasMap,
   affiliate_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
@@ -9637,6 +9943,12 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.game_loyalty_checkin_credits = settings.game_loyalty_checkin_credits || "0";
+    form.game_loyalty_slot_bet_credits = settings.game_loyalty_slot_bet_credits || "0";
+    form.game_loyalty_daily_reward_limit = settings.game_loyalty_daily_reward_limit || "0";
+    form.game_loyalty_reward_catalog = parseGameLoyaltyRewardCatalog(
+      settings.game_loyalty_reward_catalog,
+    );
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =
         defaultClaudeOAuthSystemPromptBlocks;
@@ -9853,6 +10165,26 @@ function findDuplicateDefaultSubscription(
 async function saveSettings() {
   saving.value = true;
   try {
+    const checkinCredits = form.game_loyalty_checkin_credits.trim();
+    if (!isGameLoyaltyInteger(checkinCredits, form.game_loyalty_enabled)) {
+      appStore.showError(t("admin.settings.features.gameLoyalty.checkinCreditsInvalid"));
+      return;
+    }
+    const slotBetCredits = form.game_loyalty_slot_bet_credits.trim();
+    if (!isGameLoyaltySlotBet(slotBetCredits, form.game_loyalty_enabled)) {
+      appStore.showError(t("admin.settings.features.gameLoyalty.slotBetCreditsInvalid"));
+      return;
+    }
+    const dailyRewardLimit = form.game_loyalty_daily_reward_limit.trim();
+    if (!isGameLoyaltySmallInteger(dailyRewardLimit, false)) {
+      appStore.showError(t("admin.settings.features.gameLoyalty.dailyRewardLimitInvalid"));
+      return;
+    }
+    if (!isGameLoyaltyCatalogValid(form.game_loyalty_reward_catalog)) {
+      appStore.showError(t("admin.settings.features.gameLoyalty.catalogInvalid"));
+      return;
+    }
+
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
     );
@@ -10022,6 +10354,13 @@ async function saveSettings() {
       login_agreement_updated_at: form.login_agreement_updated_at,
       login_agreement_documents: form.login_agreement_documents,
       default_balance: form.default_balance,
+      game_loyalty_enabled: form.game_loyalty_enabled,
+      game_loyalty_checkin_credits: checkinCredits,
+      game_loyalty_slot_bet_credits: slotBetCredits,
+      game_loyalty_daily_reward_limit: dailyRewardLimit,
+      game_loyalty_reward_catalog: serializeGameLoyaltyRewardCatalog(
+        form.game_loyalty_reward_catalog,
+      ),
       affiliate_rebate_rate: Math.min(
         100,
         Math.max(0, Number(form.affiliate_rebate_rate) || 0),

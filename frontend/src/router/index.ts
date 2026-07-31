@@ -194,6 +194,29 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/games',
+    name: 'GameCenter',
+    component: () => import('@/views/user/GameCenterView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Game Center',
+      titleKey: 'gameCenter.title',
+      descriptionKey: 'gameCenter.subtitle'
+    }
+  },
+  {
+    path: '/games/:gameId',
+    name: 'GamePlay',
+    component: () => import('@/views/user/GamePlayView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Play Game',
+      titleKey: 'gameCenter.playTitle'
+    }
+  },
+  {
     path: '/keys',
     name: 'Keys',
     component: () => import('@/views/user/KeysView.vue'),
@@ -888,8 +911,7 @@ router.beforeEach(async (to, _from, next) => {
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
-      '/subscriptions',
-      '/redeem'
+      '/subscriptions'
     ]
 
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {

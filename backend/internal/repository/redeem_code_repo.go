@@ -444,3 +444,23 @@ func redeemCodeEntitiesToService(models []*dbent.RedeemCode) []service.RedeemCod
 	}
 	return out
 }
+
+func (r *redeemCodeRepository) GetValueText(ctx context.Context, id int64) (string, error) {
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, `SELECT value::text FROM redeem_codes WHERE id = $1`, id)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return "", err
+		}
+		return "", service.ErrRedeemCodeNotFound
+	}
+	var value string
+	if err := rows.Scan(&value); err != nil {
+		return "", err
+	}
+	return value, nil
+}

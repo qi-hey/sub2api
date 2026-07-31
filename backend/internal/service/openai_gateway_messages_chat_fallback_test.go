@@ -83,6 +83,36 @@ func TestForwardAsAnthropic_ForceChatCompletionsNonStreaming(t *testing.T) {
 	require.False(t, result.Stream)
 }
 
+func TestForwardAsAnthropic_DeepSeekThinkingNamedToolChoiceBecomesAuto(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"claude-sonnet-4-6","max_tokens":64,"messages":[{"role":"user","content":"weather in Paris?"}],"stream":false,"tools":[{"name":"get_weather","description":"Get weather","input_schema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}],"tool_choice":{"type":"tool","name":"get_weather"}}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_tool","object":"chat.completion","model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_weather","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":8,"completion_tokens":5,"total_tokens":13}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := forceChatMessagesFallbackAccount()
+	account.Credentials["model_mapping"] = map[string]any{"claude-sonnet-4-6": "deepseek-v4-flash"}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "deepseek-codex")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "deepseek-v4-flash", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+	require.Equal(t, "tool_use", gjson.Get(rec.Body.String(), "stop_reason").String())
+	require.Equal(t, "get_weather", gjson.Get(rec.Body.String(), "content.0.name").String())
+}
+
 // Covers the fully-new streaming composition: text block is still open when
 // [DONE] arrives, so finalization must close it (content_block_stop) before
 // message_delta / message_stop.

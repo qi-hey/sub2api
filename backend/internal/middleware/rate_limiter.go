@@ -82,14 +82,31 @@ func (r *RateLimiter) Limit(key string, limit int, window time.Duration) gin.Han
 
 // LimitWithOptions 返回速率限制中间件（带可选配置）
 func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Duration, opts RateLimitOptions) gin.HandlerFunc {
+	return r.LimitWithOptionsByIdentity(key, limit, window, opts, nil)
+}
+
+// LimitWithOptionsByIdentity applies a caller-provided stable identity when
+// available, falling back to the client IP for unauthenticated routes.
+func (r *RateLimiter) LimitWithOptionsByIdentity(
+	key string,
+	limit int,
+	window time.Duration,
+	opts RateLimitOptions,
+	identity func(*gin.Context) string,
+) gin.HandlerFunc {
 	failureMode := opts.FailureMode
 	if failureMode != RateLimitFailClose {
 		failureMode = RateLimitFailOpen
 	}
 
 	return func(c *gin.Context) {
-		ip := c.ClientIP()
-		redisKey := r.prefix + key + ":" + ip
+		identityKey := c.ClientIP()
+		if identity != nil {
+			if value := identity(c); value != "" {
+				identityKey = value
+			}
+		}
+		redisKey := r.prefix + key + ":" + identityKey
 
 		ctx := c.Request.Context()
 

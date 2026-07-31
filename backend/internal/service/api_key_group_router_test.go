@@ -52,6 +52,21 @@ func TestResolveAPIKeyRequestGroupFallsBackToActiveDefault(t *testing.T) {
 	}
 }
 
+func TestResolveAPIKeyRequestGroupKeepsClaudeOnEnabledOpenAIDefault(t *testing.T) {
+	key := testMultiGroupRoutingAPIKey()
+	key.Group.AllowMessagesDispatch = true
+	key.Groups[0].AllowMessagesDispatch = true
+
+	for _, model := range []string{"claude-sonnet-4-6", "  CLAUDE-OPUS-4-8  "} {
+		selected, err := ResolveAPIKeyRequestGroup(key, model)
+
+		require.NoError(t, err)
+		require.Equal(t, int64(2), *selected.GroupID)
+		require.Equal(t, PlatformOpenAI, selected.Group.Platform)
+		require.True(t, selected.Group.AllowMessagesDispatch)
+	}
+}
+
 func TestResolveAPIKeyRequestGroupSupportsLegacyDefaultHydration(t *testing.T) {
 	defaultID := int64(2)
 	key := &APIKey{

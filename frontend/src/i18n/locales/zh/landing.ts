@@ -14,6 +14,21 @@ export default {
     login: '登录',
     getStarted: '立即开始',
     goToDashboard: '进入控制台',
+    dynamic: {
+      home: '首页',
+      mainNavigation: '主导航',
+      capabilities: '能力',
+      models: '模型',
+      kicker: '智能多模型路由',
+      leadPrefix: '一个入口，连接',
+      leadAccent: '所有 AI',
+      description: '统一接入主流模型，实时选择更合适的上游。自动调度、故障切换与会话保持，让每一次请求稳定抵达。',
+      startFree: '免费开始',
+      input: '统一输入',
+      core: '智能路由核心',
+      output: '多模型输出',
+      connectedModels: '已接入模型'
+    },
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',

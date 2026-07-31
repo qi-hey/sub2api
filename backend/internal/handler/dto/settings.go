@@ -148,6 +148,14 @@ type SystemSettings struct {
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
 	DefaultBalance               float64                      `json:"default_balance"`
+	GameWalletEnabled            bool                         `json:"game_wallet_enabled"`
+	GameWalletExchangeRate       string                       `json:"game_wallet_exchange_rate"`
+	GameWalletDailyLimit         string                       `json:"game_wallet_daily_limit"`
+	GameLoyaltyEnabled           bool                         `json:"game_loyalty_enabled"`
+	GameLoyaltyCheckinCredits    string                       `json:"game_loyalty_checkin_credits"`
+	GameLoyaltySlotBetCredits    string                       `json:"game_loyalty_slot_bet_credits"`
+	GameLoyaltyDailyRewardLimit  string                       `json:"game_loyalty_daily_reward_limit"`
+	GameLoyaltyRewardCatalog     string                       `json:"game_loyalty_reward_catalog"`
 	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`

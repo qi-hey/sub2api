@@ -141,3 +141,47 @@ func TestRateLimiterSuccessAndLimit(t *testing.T) {
 	router.ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
 }
+
+func TestRateLimiterCanUseAuthenticatedIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	callCounts := make(map[string]int64)
+	originalRun := rateLimitRun
+	rateLimitRun = func(_ context.Context, _ *redis.Client, key string, _ int64) (int64, bool, error) {
+		callCounts[key]++
+		return callCounts[key], false, nil
+	}
+	t.Cleanup(func() { rateLimitRun = originalRun })
+
+	limiter := NewRateLimiter(redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}))
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("rate-limit-user", c.GetHeader("X-Test-User"))
+		c.Next()
+	})
+	router.Use(limiter.LimitWithOptionsByIdentity(
+		"wallet",
+		1,
+		time.Minute,
+		RateLimitOptions{FailureMode: RateLimitFailClose},
+		func(c *gin.Context) string {
+			value, _ := c.Get("rate-limit-user")
+			identity, _ := value.(string)
+			return identity
+		},
+	))
+	router.POST("/exchange", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+
+	request := func(user, remoteAddr string) int {
+		req := httptest.NewRequest(http.MethodPost, "/exchange", nil)
+		req.Header.Set("X-Test-User", user)
+		req.RemoteAddr = remoteAddr
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, req)
+		return recorder.Code
+	}
+
+	require.Equal(t, http.StatusNoContent, request("user:7", "10.0.0.1:1000"))
+	require.Equal(t, http.StatusTooManyRequests, request("user:7", "10.0.0.2:2000"))
+	require.Equal(t, http.StatusNoContent, request("user:8", "10.0.0.1:1000"))
+}

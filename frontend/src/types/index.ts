@@ -2266,6 +2266,37 @@ export interface UpdateScheduledTestPlanRequest {
 export type { SubscriptionPlan, PaymentOrder, CheckoutInfoResponse } from './payment'
 
 export type {
+  GameWallet,
+	GameFruitBets,
+	GameFruitDoor,
+	GameFruitOutcome,
+	GameFruitRewardStop,
+	GameFruitSpinResult,
+	GameCreditGiftRequest,
+	GameCreditGiftResult,
+  GameWalletCheckinResult,
+  GameWalletEntryType,
+  GameLeaderboardEntry,
+  GameLeaderboardQuery,
+  GameLeaderboardResult,
+  GameLeaderboardScoreResult,
+  GameWalletRewardClaimRequest,
+  GameWalletRewardClaimResult,
+  GameWalletRewardItem,
+  GameWalletRewardList,
+  GameWalletSlotBonusClaimRequest,
+  GameWalletSlotBonusClaimResult,
+  GameWalletSlotBonusRound,
+  GameWalletSpinRequest,
+  GameWalletSpinResult,
+  GameWalletTransaction,
+  GameWalletTransactionList,
+  GameWalletTransactionQuery,
+  GameWalletWinningLine,
+  GameLoyaltyRewardCatalogItem,
+} from './gameWallet'
+
+export type {
   PlatformQuotaItem,
   PlatformQuotaUpdateItem,
   PlatformQuotaPlatform,

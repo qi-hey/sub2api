@@ -57,7 +57,7 @@ func resolveAPIKeyRequestGroup(c *gin.Context, apiKey *service.APIKey) (*service
 	if modelErr != nil {
 		return nil, modelErr
 	}
-	return resolveAPIKeyRequestPlatformOrUnavailableDefault(apiKey, service.APIKeyRequestPlatformForModel(model))
+	return resolveAPIKeyRequestPlatformOrUnavailableDefault(apiKey, service.APIKeyRequestPlatformForAPIKey(apiKey, model))
 }
 
 func resolveGoogleAPIKeyRequestGroup(c *gin.Context, apiKey *service.APIKey) (*service.APIKey, error) {

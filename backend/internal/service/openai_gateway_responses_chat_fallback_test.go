@@ -141,6 +141,79 @@ func TestForwardResponses_DeepSeekReasoningOnlyStreamProducesVisibleText(t *test
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
 
+func TestForwardResponses_DeepSeekThinkingToolChoiceCompatibility(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name        string
+		model       string
+		mappedModel string
+		toolChoice  string
+		wantChoice  string
+	}{
+		{
+			name:        "DeepSeek V4 required becomes auto",
+			model:       "deepseek-codex",
+			mappedModel: "deepseek-v4-flash",
+			toolChoice:  `"required"`,
+			wantChoice:  "auto",
+		},
+		{
+			name:        "DeepSeek V4 named function becomes auto",
+			model:       "deepseek-codex",
+			mappedModel: "deepseek-v4-flash",
+			toolChoice:  `{"type":"function","name":"get_magic_number"}`,
+			wantChoice:  "auto",
+		},
+		{
+			name:        "DeepSeek V4 auto stays auto",
+			model:       "deepseek-codex",
+			mappedModel: "deepseek-v4-flash",
+			toolChoice:  `"auto"`,
+			wantChoice:  "auto",
+		},
+		{
+			name:        "non DeepSeek required stays required",
+			model:       "gpt-5.4",
+			mappedModel: "gpt-5.4",
+			toolChoice:  `"required"`,
+			wantChoice:  "required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"model":"` + tt.model + `","input":"call the tool","stream":false,` +
+				`"tools":[{"type":"function","name":"get_magic_number","description":"Return a number",` +
+				`"parameters":{"type":"object","properties":{"topic":{"type":"string"}},"required":["topic"]}}],` +
+				`"tool_choice":` + tt.toolChoice + `}`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(
+					`{"id":"chatcmpl_tool_choice","object":"chat.completion","model":"` + tt.mappedModel + `","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+				)),
+			}}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			account := forceChatResponsesFallbackAccount()
+			account.Credentials["model_mapping"] = map[string]any{tt.model: tt.mappedModel}
+
+			result, err := svc.Forward(context.Background(), c, account, body)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tt.mappedModel, gjson.GetBytes(upstream.lastBody, "model").String())
+			require.Equal(t, tt.wantChoice, gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+			require.Equal(t, 1, int(gjson.GetBytes(upstream.lastBody, "tools.#").Int()))
+			require.Equal(t, "get_magic_number", gjson.GetBytes(upstream.lastBody, "tools.0.function.name").String())
+		})
+	}
+}
+
 func TestForwardResponses_AutoSupportedAccountStillUsesResponsesEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

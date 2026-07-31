@@ -351,6 +351,14 @@ const baseSettingsResponse = {
   totp_enabled: false,
   totp_encryption_key_configured: false,
   default_balance: 0,
+  game_wallet_enabled: false,
+  game_wallet_exchange_rate: "0",
+  game_wallet_daily_limit: "0",
+  game_loyalty_enabled: false,
+  game_loyalty_checkin_credits: "0",
+  game_loyalty_slot_bet_credits: "0",
+  game_loyalty_daily_reward_limit: "0",
+  game_loyalty_reward_catalog: "[]",
   default_concurrency: 1,
   default_subscriptions: [],
   site_name: "Sub2API",
@@ -555,6 +563,16 @@ async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
 
   expect(gatewayTabButton).toBeDefined();
   await gatewayTabButton?.trigger("click");
+  await flushPromises();
+}
+
+async function openFeaturesTab(wrapper: ReturnType<typeof mountView>) {
+  const featuresTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.features"));
+
+  expect(featuresTabButton).toBeDefined();
+  await featuresTabButton?.trigger("click");
   await flushPromises();
 }
 
@@ -788,6 +806,148 @@ describe("admin SettingsView payment visible method controls", () => {
       expect.objectContaining({
         affiliate_admin_recharge_enabled: true,
       }),
+    );
+  });
+
+  it("loads and saves game loyalty settings with a structured reward catalog", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      game_loyalty_enabled: true,
+      game_loyalty_checkin_credits: "50",
+      game_loyalty_slot_bet_credits: "10",
+      game_loyalty_daily_reward_limit: "3",
+      game_loyalty_reward_catalog: JSON.stringify([{
+        id: "api_1",
+        title: "1 美元 API 额度",
+        credit_cost: "500",
+        voucher_value: "1.25",
+        daily_stock: 20,
+        expiry_days: 7,
+        enabled: true,
+      }]),
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openFeaturesTab(wrapper);
+
+    const card = wrapper.get('[data-testid="game-loyalty-settings"]');
+    expect((card.get('[data-testid="game-loyalty-enabled"]').element as HTMLInputElement).checked).toBe(true);
+    expect((card.get('[data-testid="game-loyalty-checkin"]').element as HTMLInputElement).value).toBe("50");
+    expect((card.get('[data-testid="game-loyalty-slot-bet"]').element as HTMLInputElement).value).toBe("10");
+    expect((card.get('[data-testid="game-loyalty-daily-limit"]').element as HTMLInputElement).value).toBe("3");
+    expect((card.get('[data-testid="game-loyalty-reward-title-0"]').element as HTMLInputElement).value).toBe("1 美元 API 额度");
+
+    await card.get('[data-testid="game-loyalty-checkin"]').setValue("60");
+    await card.get('[data-testid="game-loyalty-slot-bet"]').setValue("12");
+    await card.get('[data-testid="game-loyalty-daily-limit"]').setValue("4");
+    await card.get('[data-testid="game-loyalty-reward-value-0"]').setValue("2.5");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        game_loyalty_enabled: true,
+        game_loyalty_checkin_credits: "60",
+        game_loyalty_slot_bet_credits: "12",
+        game_loyalty_daily_reward_limit: "4",
+      }),
+    );
+    const payload = updateSettings.mock.calls[0]?.[0];
+    expect(JSON.parse(payload.game_loyalty_reward_catalog)).toEqual([{
+      id: "api_1",
+      title: "1 美元 API 额度",
+      credit_cost: "500",
+      voucher_value: "2.5",
+      daily_stock: 20,
+      expiry_days: 7,
+      enabled: true,
+    }]);
+    expect(payload).not.toHaveProperty("game_wallet_enabled");
+    expect(payload).not.toHaveProperty("game_wallet_exchange_rate");
+    expect(payload).not.toHaveProperty("game_wallet_daily_limit");
+  });
+
+  it("rejects non-integer check-in credits while loyalty is enabled", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      game_loyalty_enabled: true,
+      game_loyalty_checkin_credits: "1.5",
+      game_loyalty_slot_bet_credits: "10",
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.features.gameLoyalty.checkinCreditsInvalid",
+    );
+  });
+
+  it("rejects a slot bet above 10000 credits", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      game_loyalty_enabled: true,
+      game_loyalty_checkin_credits: "50",
+      game_loyalty_slot_bet_credits: "10001",
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.features.gameLoyalty.slotBetCreditsInvalid",
+    );
+  });
+
+  it("rejects empty check-in credits even while loyalty is disabled", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      game_loyalty_enabled: false,
+      game_loyalty_checkin_credits: "50",
+      game_loyalty_slot_bet_credits: "10",
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openFeaturesTab(wrapper);
+    const card = wrapper.get('[data-testid="game-loyalty-settings"]');
+    await card.get('[data-testid="game-loyalty-checkin"]').setValue("");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.features.gameLoyalty.checkinCreditsInvalid",
+    );
+  });
+
+  it("rejects an empty daily reward limit instead of treating it as unlimited", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      game_loyalty_enabled: true,
+      game_loyalty_checkin_credits: "50",
+      game_loyalty_slot_bet_credits: "10",
+      game_loyalty_daily_reward_limit: "20",
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openFeaturesTab(wrapper);
+    const card = wrapper.get('[data-testid="game-loyalty-settings"]');
+    await card.get('[data-testid="game-loyalty-daily-limit"]').setValue("");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.features.gameLoyalty.dailyRewardLimitInvalid",
     );
   });
 

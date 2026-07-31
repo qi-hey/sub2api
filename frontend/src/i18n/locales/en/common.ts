@@ -152,6 +152,7 @@ export default {
   nav: {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
+    gameCenter: 'Games',
     apiKeys: 'API Keys',
     batchImage: 'Batch Images',
     usage: 'Usage',

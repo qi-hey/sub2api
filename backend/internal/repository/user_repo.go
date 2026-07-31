@@ -799,6 +799,34 @@ func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id in
 	return nil
 }
 
+// ApplyGameTokenBalanceCreditExact credits API usage balance from a game_token
+// voucher. amount must be an exact positive decimal string. This deliberately
+// does not update total_recharged and is the only balance path used by R21
+// loyalty reward redemptions.
+func (r *userRepository) ApplyGameTokenBalanceCreditExact(ctx context.Context, id int64, amount string) error {
+	const updateSQL = `
+		UPDATE users
+		SET balance = balance + $1::numeric, updated_at = NOW()
+		WHERE id = $2
+		  AND deleted_at IS NULL
+		  AND $1::numeric > 0
+		  AND balance <= 999999999999.99999999 - $1::numeric
+	`
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, updateSQL, amount, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
 // DeductBalance 扣除用户余额
 // 透支策略：允许余额变为负数，确保当前请求能够完成
 // 中间件会阻止余额 <= 0 的用户发起后续请求

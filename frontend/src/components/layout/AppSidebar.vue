@@ -277,6 +277,21 @@ const DashboardIcon = {
     )
 }
 
+const GamepadIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M6.75 9.75v4.5m-2.25-2.25H9m6.75-.75h.008v.008h-.008v-.008zm2.25 1.5h.008v.008H18v-.008zM7.2 6.75h9.6a4.5 4.5 0 014.383 3.48l1.15 4.943a3 3 0 01-5.005 2.88l-1.835-1.835a1.5 1.5 0 00-1.06-.44H9.567a1.5 1.5 0 00-1.06.44l-1.835 1.835a3 3 0 01-5.005-2.88l1.15-4.943A4.5 4.5 0 017.2 6.75z'
+        })
+      ]
+    )
+}
+
 const KeyIcon = {
   render: () =>
     h(
@@ -692,7 +707,7 @@ const flagBatchImageAccess = () => canUseBatchImage.value
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
-// 条目顺序：密钥 → 用量 → 可用渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
+// 条目顺序：游戏 → 密钥 → 用量 → 可用渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
 // 可用渠道紧挨渠道状态之上，让用户"先看自己能用什么、再看对应状态"。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
@@ -700,6 +715,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
   items.push(
+    { path: '/games', label: t('nav.gameCenter'), icon: GamepadIcon },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
@@ -708,7 +724,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
+    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
@@ -817,9 +833,10 @@ const adminNavItems = computed((): NavItem[] => {
 
   const visible = applyFeatureFlags(baseItems)
 
-  // 简单模式下，在系统设置前插入 API密钥
+  // 简单模式下，在系统设置前插入游戏中心和 API 密钥。
   if (authStore.isSimpleMode) {
     const filtered = visible.filter(item => !item.hideInSimpleMode)
+    filtered.push({ path: '/games', label: t('nav.gameCenter'), icon: GamepadIcon })
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {

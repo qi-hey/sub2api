@@ -137,6 +137,9 @@ type UserRepository interface {
 type RedeemUserAdjustmentRepository interface {
 	ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error
 	ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error
+	// ApplyGameTokenBalanceCreditExact credits balance from a game_token voucher
+	// using an exact decimal string. Must not update total_recharged.
+	ApplyGameTokenBalanceCreditExact(ctx context.Context, id int64, amount string) error
 }
 
 type UserAuthIdentityRecord struct {

@@ -305,6 +305,30 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 	}
+	if before.GameWalletEnabled != after.GameWalletEnabled {
+		changed = append(changed, "game_wallet_enabled")
+	}
+	if before.GameWalletExchangeRate != after.GameWalletExchangeRate {
+		changed = append(changed, "game_wallet_exchange_rate")
+	}
+	if before.GameWalletDailyLimit != after.GameWalletDailyLimit {
+		changed = append(changed, "game_wallet_daily_limit")
+	}
+	if before.GameLoyaltyEnabled != after.GameLoyaltyEnabled {
+		changed = append(changed, "game_loyalty_enabled")
+	}
+	if before.GameLoyaltyCheckinCredits != after.GameLoyaltyCheckinCredits {
+		changed = append(changed, "game_loyalty_checkin_credits")
+	}
+	if before.GameLoyaltySlotBetCredits != after.GameLoyaltySlotBetCredits {
+		changed = append(changed, "game_loyalty_slot_bet_credits")
+	}
+	if before.GameLoyaltyDailyRewardLimit != after.GameLoyaltyDailyRewardLimit {
+		changed = append(changed, "game_loyalty_daily_reward_limit")
+	}
+	if before.GameLoyaltyRewardCatalog != after.GameLoyaltyRewardCatalog {
+		changed = append(changed, "game_loyalty_reward_catalog")
+	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")
 	}

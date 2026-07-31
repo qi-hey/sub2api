@@ -52,6 +52,50 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 }
 
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
+	// Preserve compatibility for internal callers that construct SystemSettings
+	// directly and therefore have empty zero-value strings for newly added fields.
+	if strings.TrimSpace(settings.GameWalletExchangeRate) == "" {
+		settings.GameWalletExchangeRate = "0"
+	}
+	if strings.TrimSpace(settings.GameWalletDailyLimit) == "" {
+		settings.GameWalletDailyLimit = "0"
+	}
+	gameWalletRate, gameWalletDailyLimit, err := ValidateGameWalletSettingValues(
+		settings.GameWalletEnabled,
+		settings.GameWalletExchangeRate,
+		settings.GameWalletDailyLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	settings.GameWalletExchangeRate = gameWalletRate
+	settings.GameWalletDailyLimit = gameWalletDailyLimit
+	if strings.TrimSpace(settings.GameLoyaltyCheckinCredits) == "" {
+		settings.GameLoyaltyCheckinCredits = "0"
+	}
+	if strings.TrimSpace(settings.GameLoyaltySlotBetCredits) == "" {
+		settings.GameLoyaltySlotBetCredits = "0"
+	}
+	if strings.TrimSpace(settings.GameLoyaltyDailyRewardLimit) == "" {
+		settings.GameLoyaltyDailyRewardLimit = "0"
+	}
+	if strings.TrimSpace(settings.GameLoyaltyRewardCatalog) == "" {
+		settings.GameLoyaltyRewardCatalog = "[]"
+	}
+	checkin, bet, dailyRewardLimit, catalog, err := ValidateGameLoyaltySettingValues(
+		settings.GameLoyaltyEnabled,
+		settings.GameLoyaltyCheckinCredits,
+		settings.GameLoyaltySlotBetCredits,
+		settings.GameLoyaltyDailyRewardLimit,
+		settings.GameLoyaltyRewardCatalog,
+	)
+	if err != nil {
+		return nil, err
+	}
+	settings.GameLoyaltyCheckinCredits = checkin
+	settings.GameLoyaltySlotBetCredits = bet
+	settings.GameLoyaltyDailyRewardLimit = dailyRewardLimit
+	settings.GameLoyaltyRewardCatalog = catalog
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
@@ -291,6 +335,14 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+	updates[SettingKeyGameWalletEnabled] = strconv.FormatBool(settings.GameWalletEnabled)
+	updates[SettingKeyGameWalletExchangeRate] = settings.GameWalletExchangeRate
+	updates[SettingKeyGameWalletDailyLimit] = settings.GameWalletDailyLimit
+	updates[SettingKeyGameLoyaltyEnabled] = strconv.FormatBool(settings.GameLoyaltyEnabled)
+	updates[SettingKeyGameLoyaltyCheckinCredits] = settings.GameLoyaltyCheckinCredits
+	updates[SettingKeyGameLoyaltySlotBetCredits] = settings.GameLoyaltySlotBetCredits
+	updates[SettingKeyGameLoyaltyDailyRewardLimit] = settings.GameLoyaltyDailyRewardLimit
+	updates[SettingKeyGameLoyaltyRewardCatalog] = settings.GameLoyaltyRewardCatalog
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {

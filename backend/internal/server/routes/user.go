@@ -1,24 +1,74 @@
 package routes
 
 import (
+	"strconv"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler"
-	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	appmiddleware "github.com/Wei-Shaw/sub2api/internal/middleware"
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 // RegisterUserRoutes 注册用户相关路由（需要认证）
 func RegisterUserRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
-	jwtAuth middleware.JWTAuthMiddleware,
-	auditLog middleware.AuditLogMiddleware,
+	jwtAuth servermiddleware.JWTAuthMiddleware,
+	auditLog servermiddleware.AuditLogMiddleware,
 	settingService *service.SettingService,
+	redisClient *redis.Client,
 ) {
+	rateLimiter := appmiddleware.NewRateLimiter(redisClient)
+	// All loyalty mutations fail closed if Redis is unavailable.
+	gameWalletCheckInLimiter := rateLimiter.LimitWithOptionsByIdentity(
+		"game-wallet-checkin",
+		10,
+		time.Minute,
+		appmiddleware.RateLimitOptions{FailureMode: appmiddleware.RateLimitFailClose},
+		gameWalletUserRateLimitIdentity,
+	)
+	gameWalletSpinLimiter := rateLimiter.LimitWithOptionsByIdentity(
+		"game-wallet-spin",
+		60,
+		time.Minute,
+		appmiddleware.RateLimitOptions{FailureMode: appmiddleware.RateLimitFailClose},
+		gameWalletUserRateLimitIdentity,
+	)
+	gameWalletClaimLimiter := rateLimiter.LimitWithOptionsByIdentity(
+		"game-wallet-reward-claim",
+		20,
+		time.Minute,
+		appmiddleware.RateLimitOptions{FailureMode: appmiddleware.RateLimitFailClose},
+		gameWalletUserRateLimitIdentity,
+	)
+	gameWalletGiftLimiter := rateLimiter.LimitWithOptionsByIdentity(
+		"game-wallet-gift",
+		10,
+		time.Minute,
+		appmiddleware.RateLimitOptions{FailureMode: appmiddleware.RateLimitFailClose},
+		gameWalletUserRateLimitIdentity,
+	)
+	gameWalletScoreLimiter := rateLimiter.LimitWithOptionsByIdentity(
+		"game-wallet-score",
+		120,
+		time.Minute,
+		appmiddleware.RateLimitOptions{FailureMode: appmiddleware.RateLimitFailClose},
+		gameWalletUserRateLimitIdentity,
+	)
+	gameWalletLeaderboardLimiter := rateLimiter.LimitWithOptionsByIdentity(
+		"game-wallet-leaderboard",
+		120,
+		time.Minute,
+		appmiddleware.RateLimitOptions{FailureMode: appmiddleware.RateLimitFailClose},
+		gameWalletUserRateLimitIdentity,
+	)
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
-	authenticated.Use(middleware.BackendModeUserGuard(settingService))
+	authenticated.Use(servermiddleware.BackendModeUserGuard(settingService))
 	// 用户管理面变更类操作入审计（含 TOTP 启用/禁用、step-up 验证、密码修改等安全事件）
 	authenticated.Use(gin.HandlerFunc(auditLog))
 	{
@@ -26,6 +76,17 @@ func RegisterUserRoutes(
 		user := authenticated.Group("/user")
 		{
 			user.GET("/profile", h.User.GetProfile)
+			user.GET("/game-wallet", h.GameWallet.GetWallet)
+			user.POST("/game-wallet/check-in", gameWalletCheckInLimiter, h.GameWallet.CheckIn)
+			user.POST("/game-wallet/gifts", gameWalletGiftLimiter, h.GameWallet.GiftCredits)
+			user.POST("/game-wallet/slot/spin", gameWalletSpinLimiter, h.GameWallet.Spin)
+			user.POST("/game-wallet/fruit/spin", gameWalletSpinLimiter, h.GameWallet.FruitSpin)
+			user.POST("/game-wallet/slot/bonus/claim", gameWalletClaimLimiter, h.GameWallet.ClaimSlotBonus)
+			user.GET("/game-wallet/leaderboard", gameWalletLeaderboardLimiter, h.GameWallet.GetLeaderboard)
+			user.POST("/game-wallet/leaderboard/score", gameWalletScoreLimiter, h.GameWallet.SubmitLeaderboardScore)
+			user.GET("/game-wallet/rewards", h.GameWallet.ListRewards)
+			user.POST("/game-wallet/rewards/claim", gameWalletClaimLimiter, h.GameWallet.ClaimReward)
+			user.GET("/game-wallet/transactions", h.GameWallet.ListTransactions)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
 			user.GET("/aff", h.User.GetAffiliate)
@@ -129,4 +190,12 @@ func RegisterUserRoutes(
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
 	}
+}
+
+func gameWalletUserRateLimitIdentity(c *gin.Context) string {
+	subject, ok := servermiddleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		return ""
+	}
+	return "user:" + strconv.FormatInt(subject.UserID, 10)
 }

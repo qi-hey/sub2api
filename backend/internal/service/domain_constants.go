@@ -83,6 +83,7 @@ const (
 	RedeemTypeConcurrency      = domain.RedeemTypeConcurrency
 	RedeemTypeSubscription     = domain.RedeemTypeSubscription
 	RedeemTypeInvitation       = domain.RedeemTypeInvitation
+	RedeemTypeGameToken        = domain.RedeemTypeGameToken
 	RedeemTypeAffiliateBalance = "affiliate_balance"
 )
 
@@ -280,6 +281,18 @@ const (
 	SettingKeyDefaultBalance       = "default_balance"        // 新用户默认余额
 	SettingKeyDefaultSubscriptions = "default_subscriptions"  // 新用户默认订阅列表（JSON）
 	SettingKeyDefaultUserRPMLimit  = "default_user_rpm_limit" // 新用户默认 RPM 限制（0 = 不限制）
+
+	// Game wallet exchange. Rate is integer credits per one account balance unit.
+	SettingKeyGameWalletEnabled      = "game_wallet_enabled"
+	SettingKeyGameWalletExchangeRate = "game_wallet_exchange_rate"
+	SettingKeyGameWalletDailyLimit   = "game_wallet_daily_limit"
+
+	// Game loyalty (R21). Fail closed until operators configure economics.
+	SettingKeyGameLoyaltyEnabled          = "game_loyalty_enabled"
+	SettingKeyGameLoyaltyCheckinCredits   = "game_loyalty_checkin_credits"
+	SettingKeyGameLoyaltySlotBetCredits   = "game_loyalty_slot_bet_credits"
+	SettingKeyGameLoyaltyDailyRewardLimit = "game_loyalty_daily_reward_limit"
+	SettingKeyGameLoyaltyRewardCatalog    = "game_loyalty_reward_catalog"
 
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance             = "auth_source_default_email_balance"

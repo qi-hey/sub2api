@@ -19,13 +19,43 @@ var ErrAPIKeyGroupConflict = infraerrors.InternalServer(
 // ResolveAPIKeyRequestGroup selects an active bound group for one request.
 // The returned API key is request-local; the authenticated source is unchanged.
 func ResolveAPIKeyRequestGroup(apiKey *APIKey, model string) (*APIKey, error) {
-	return resolveAPIKeyRequestPlatform(apiKey, APIKeyRequestPlatformForModel(model))
+	return resolveAPIKeyRequestPlatform(apiKey, APIKeyRequestPlatformForAPIKey(apiKey, model))
 }
 
 // APIKeyRequestPlatformForModel returns the routing platform implied by a model.
 // An empty result means the API key's default group should be used.
 func APIKeyRequestPlatformForModel(model string) string {
 	return requestedAPIKeyPlatform(model)
+}
+
+// APIKeyRequestPlatformForAPIKey keeps Claude-compatible requests on an
+// explicitly enabled OpenAI default group. This lets /v1/messages reach the
+// OpenAI bridge before the raw claude-* model family selects Anthropic.
+func APIKeyRequestPlatformForAPIKey(apiKey *APIKey, model string) string {
+	platform := APIKeyRequestPlatformForModel(model)
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "claude-") {
+		return platform
+	}
+	group := defaultAPIKeyRoutingGroup(apiKey)
+	if group == nil || group.Status != StatusActive || group.Platform != PlatformOpenAI || !group.AllowMessagesDispatch {
+		return platform
+	}
+	return PlatformOpenAI
+}
+
+func defaultAPIKeyRoutingGroup(apiKey *APIKey) *Group {
+	if apiKey == nil || apiKey.GroupID == nil {
+		return nil
+	}
+	if apiKey.Group != nil && apiKey.Group.ID == *apiKey.GroupID {
+		return apiKey.Group
+	}
+	for i := range apiKey.Groups {
+		if apiKey.Groups[i].ID == *apiKey.GroupID {
+			return &apiKey.Groups[i]
+		}
+	}
+	return nil
 }
 
 // ResolveAPIKeyRequestPlatform selects an active bound group for an endpoint

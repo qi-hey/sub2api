@@ -658,6 +658,18 @@ export interface SystemSettings {
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
+  // Legacy game wallet exchange
+  game_wallet_enabled: boolean;
+  game_wallet_exchange_rate: string;
+  game_wallet_daily_limit: string;
+
+  // Game loyalty and rewards
+  game_loyalty_enabled: boolean;
+  game_loyalty_checkin_credits: string;
+  game_loyalty_slot_bet_credits: string;
+  game_loyalty_daily_reward_limit: string;
+  game_loyalty_reward_catalog: string;
+
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 
@@ -927,6 +939,18 @@ export interface UpdateSettingsRequest {
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;
+
+  // Legacy game wallet exchange
+  game_wallet_enabled?: boolean;
+  game_wallet_exchange_rate?: string;
+  game_wallet_daily_limit?: string;
+
+  // Game loyalty and rewards
+  game_loyalty_enabled?: boolean;
+  game_loyalty_checkin_credits?: string;
+  game_loyalty_slot_bet_credits?: string;
+  game_loyalty_daily_reward_limit?: string;
+  game_loyalty_reward_catalog?: string;
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;

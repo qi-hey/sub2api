@@ -123,6 +123,14 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoUsernamePath:           "",
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyGameWalletEnabled:                         "false",
+		SettingKeyGameWalletExchangeRate:                    "0",
+		SettingKeyGameWalletDailyLimit:                      "0",
+		SettingKeyGameLoyaltyEnabled:                        "false",
+		SettingKeyGameLoyaltyCheckinCredits:                 "0",
+		SettingKeyGameLoyaltySlotBetCredits:                 "0",
+		SettingKeyGameLoyaltyDailyRewardLimit:               "0",
+		SettingKeyGameLoyaltyRewardCatalog:                  "[]",
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
@@ -330,7 +338,31 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
+		GameWalletEnabled:                settings[SettingKeyGameWalletEnabled] == "true",
+		GameLoyaltyEnabled:               settings[SettingKeyGameLoyaltyEnabled] == "true",
 	}
+	gameWalletRate, gameWalletDailyLimit, gameWalletErr := NormalizeGameWalletSettingValues(
+		settings[SettingKeyGameWalletExchangeRate],
+		settings[SettingKeyGameWalletDailyLimit],
+	)
+	if gameWalletErr != nil {
+		gameWalletRate, gameWalletDailyLimit = "0", "0"
+	}
+	result.GameWalletExchangeRate = gameWalletRate
+	result.GameWalletDailyLimit = gameWalletDailyLimit
+	checkin, bet, dailyRewardLimit, catalog, loyaltyErr := NormalizeGameLoyaltySettingValues(
+		settings[SettingKeyGameLoyaltyCheckinCredits],
+		settings[SettingKeyGameLoyaltySlotBetCredits],
+		settings[SettingKeyGameLoyaltyDailyRewardLimit],
+		settings[SettingKeyGameLoyaltyRewardCatalog],
+	)
+	if loyaltyErr != nil {
+		checkin, bet, dailyRewardLimit, catalog = "0", "0", "0", "[]"
+	}
+	result.GameLoyaltyCheckinCredits = checkin
+	result.GameLoyaltySlotBetCredits = bet
+	result.GameLoyaltyDailyRewardLimit = dailyRewardLimit
+	result.GameLoyaltyRewardCatalog = catalog
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],
 		settings[SettingKeyTablePageSizeOptions],

@@ -148,6 +148,14 @@ type SystemSettings struct {
 
 	DefaultConcurrency           int
 	DefaultBalance               float64
+	GameWalletEnabled            bool
+	GameWalletExchangeRate       string
+	GameWalletDailyLimit         string
+	GameLoyaltyEnabled           bool
+	GameLoyaltyCheckinCredits    string
+	GameLoyaltySlotBetCredits    string
+	GameLoyaltyDailyRewardLimit  string
+	GameLoyaltyRewardCatalog     string
 	RiskControlEnabled           bool
 	CyberSessionBlockEnabled     bool
 	CyberSessionBlockTTLSeconds  int

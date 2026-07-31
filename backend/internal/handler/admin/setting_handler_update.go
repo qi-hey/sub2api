@@ -150,6 +150,14 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
 	DefaultBalance                            float64                           `json:"default_balance"`
+	GameWalletEnabled                         *bool                             `json:"game_wallet_enabled"`
+	GameWalletExchangeRate                    *string                           `json:"game_wallet_exchange_rate"`
+	GameWalletDailyLimit                      *string                           `json:"game_wallet_daily_limit"`
+	GameLoyaltyEnabled                        *bool                             `json:"game_loyalty_enabled"`
+	GameLoyaltyCheckinCredits                 *string                           `json:"game_loyalty_checkin_credits"`
+	GameLoyaltySlotBetCredits                 *string                           `json:"game_loyalty_slot_bet_credits"`
+	GameLoyaltyDailyRewardLimit               *string                           `json:"game_loyalty_daily_reward_limit"`
+	GameLoyaltyRewardCatalog                  *string                           `json:"game_loyalty_reward_catalog"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
@@ -406,6 +414,50 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	forwardedClientIPHeaders := append([]string(nil), previousSettings.ForwardedClientIPHeaders...)
 	if req.ForwardedClientIPHeaders != nil {
 		forwardedClientIPHeaders = append([]string(nil), (*req.ForwardedClientIPHeaders)...)
+	}
+	gameWalletEnabled := previousSettings.GameWalletEnabled
+	if req.GameWalletEnabled != nil {
+		gameWalletEnabled = *req.GameWalletEnabled
+	}
+	gameWalletRate := previousSettings.GameWalletExchangeRate
+	if req.GameWalletExchangeRate != nil {
+		gameWalletRate = *req.GameWalletExchangeRate
+	}
+	gameWalletDailyLimit := previousSettings.GameWalletDailyLimit
+	if req.GameWalletDailyLimit != nil {
+		gameWalletDailyLimit = *req.GameWalletDailyLimit
+	}
+	gameWalletRate, gameWalletDailyLimit, err = service.ValidateGameWalletSettingValues(gameWalletEnabled, gameWalletRate, gameWalletDailyLimit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	gameLoyaltyEnabled := previousSettings.GameLoyaltyEnabled
+	if req.GameLoyaltyEnabled != nil {
+		gameLoyaltyEnabled = *req.GameLoyaltyEnabled
+	}
+	gameLoyaltyCheckin := previousSettings.GameLoyaltyCheckinCredits
+	if req.GameLoyaltyCheckinCredits != nil {
+		gameLoyaltyCheckin = *req.GameLoyaltyCheckinCredits
+	}
+	gameLoyaltyBet := previousSettings.GameLoyaltySlotBetCredits
+	if req.GameLoyaltySlotBetCredits != nil {
+		gameLoyaltyBet = *req.GameLoyaltySlotBetCredits
+	}
+	gameLoyaltyDailyRewardLimit := previousSettings.GameLoyaltyDailyRewardLimit
+	if req.GameLoyaltyDailyRewardLimit != nil {
+		gameLoyaltyDailyRewardLimit = *req.GameLoyaltyDailyRewardLimit
+	}
+	gameLoyaltyCatalog := previousSettings.GameLoyaltyRewardCatalog
+	if req.GameLoyaltyRewardCatalog != nil {
+		gameLoyaltyCatalog = *req.GameLoyaltyRewardCatalog
+	}
+	gameLoyaltyCheckin, gameLoyaltyBet, gameLoyaltyDailyRewardLimit, gameLoyaltyCatalog, err = service.ValidateGameLoyaltySettingValues(
+		gameLoyaltyEnabled, gameLoyaltyCheckin, gameLoyaltyBet, gameLoyaltyDailyRewardLimit, gameLoyaltyCatalog,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
 	}
 
 	// 开启敏感操作 step-up 门控属自锁风险操作：仅允许本人已启用 TOTP 的管理员会话开启，
@@ -1361,6 +1413,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        customEndpointsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
+		GameWalletEnabled:                      gameWalletEnabled,
+		GameWalletExchangeRate:                 gameWalletRate,
+		GameWalletDailyLimit:                   gameWalletDailyLimit,
+		GameLoyaltyEnabled:                     gameLoyaltyEnabled,
+		GameLoyaltyCheckinCredits:              gameLoyaltyCheckin,
+		GameLoyaltySlotBetCredits:              gameLoyaltyBet,
+		GameLoyaltyDailyRewardLimit:            gameLoyaltyDailyRewardLimit,
+		GameLoyaltyRewardCatalog:               gameLoyaltyCatalog,
 		AffiliateRebateRate:                    affiliateRebateRate,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
@@ -1890,6 +1950,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                                         updatedSettings.DefaultBalance,
+		GameWalletEnabled:                                      updatedSettings.GameWalletEnabled,
+		GameWalletExchangeRate:                                 updatedSettings.GameWalletExchangeRate,
+		GameWalletDailyLimit:                                   updatedSettings.GameWalletDailyLimit,
+		GameLoyaltyEnabled:                                     updatedSettings.GameLoyaltyEnabled,
+		GameLoyaltyCheckinCredits:                              updatedSettings.GameLoyaltyCheckinCredits,
+		GameLoyaltySlotBetCredits:                              updatedSettings.GameLoyaltySlotBetCredits,
+		GameLoyaltyDailyRewardLimit:                            updatedSettings.GameLoyaltyDailyRewardLimit,
+		GameLoyaltyRewardCatalog:                               updatedSettings.GameLoyaltyRewardCatalog,
 		AffiliateRebateRate:                                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:                             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:                            updatedSettings.AffiliateRebateDurationDays,

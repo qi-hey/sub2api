@@ -14,6 +14,21 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    dynamic: {
+      home: 'Home',
+      mainNavigation: 'Main navigation',
+      capabilities: 'Capabilities',
+      models: 'Models',
+      kicker: 'Intelligent multi-model routing',
+      leadPrefix: 'One gateway to ',
+      leadAccent: 'every AI',
+      description: 'Connect leading models through one API and route each request to the right upstream with automatic scheduling, failover, and session persistence.',
+      startFree: 'Start free',
+      input: 'Unified input',
+      core: 'Routing core',
+      output: 'Multi-model output',
+      connectedModels: 'Connected models'
+    },
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',

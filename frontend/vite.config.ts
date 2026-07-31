@@ -114,6 +114,15 @@ export default defineConfig(({ mode }) => {
          */
         manualChunks(id: string) {
           if (id.includes('node_modules')) {
+            // Keep the game engine out of dashboard and API management pages.
+            if (id.includes('/phaser/')) {
+              return 'vendor-phaser'
+            }
+
+            if (id.includes('/three/')) {
+              return 'vendor-three'
+            }
+
             // Vue 核心库
             if (
               id.includes('/vue/') ||

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +47,16 @@ type RedeemCache interface {
 
 	AcquireRedeemLock(ctx context.Context, code string, ttl time.Duration) (bool, error)
 	ReleaseRedeemLock(ctx context.Context, code string) error
+}
+
+type redeemBillingCache interface {
+	InvalidateUserBalance(ctx context.Context, userID int64) error
+	InvalidateSubscription(ctx context.Context, userID, groupID int64) error
+}
+
+type redeemAffiliateService interface {
+	IsEnabled(ctx context.Context) bool
+	AccrueInviteRebate(ctx context.Context, inviteeID int64, baseAmount float64) (float64, error)
 }
 
 type RedeemCodeRepository interface {
@@ -138,10 +149,10 @@ type RedeemService struct {
 	redeemUserRepo       RedeemUserAdjustmentRepository
 	subscriptionService  *SubscriptionService
 	cache                RedeemCache
-	billingCacheService  *BillingCacheService
+	billingCacheService  redeemBillingCache
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
-	affiliateService     *AffiliateService
+	affiliateService     redeemAffiliateService
 }
 
 // NewRedeemService 创建兑换码服务实例
@@ -419,7 +430,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 
 	// 验证兑换码类型的前置条件。邀请码属于注册流程，不能通过普通兑换接口使用。
 	switch redeemCode.Type {
-	case RedeemTypeBalance, RedeemTypeConcurrency:
+	case RedeemTypeBalance, RedeemTypeConcurrency, RedeemTypeGameToken:
 	case RedeemTypeSubscription:
 		if redeemCode.GroupID == nil {
 			return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid subscription redeem code: missing group_id")
@@ -466,6 +477,21 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 			}
 		} else if err := s.userRepo.UpdateBalance(txCtx, userID, amount); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
+		}
+
+	case RedeemTypeGameToken:
+		// game_token vouchers add API usage balance only. They must not update
+		// total_recharged and must not invoke affiliate rebate. Prefer reading
+		// the stored NUMERIC value as text so the credit path stays exact.
+		if s.redeemUserRepo == nil {
+			return nil, errors.New("user repository does not support game_token balance credits")
+		}
+		amountText, err := s.lookupGameTokenValueText(txCtx, redeemCode.ID, redeemCode.Value)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.redeemUserRepo.ApplyGameTokenBalanceCreditExact(txCtx, userID, amountText); err != nil {
+			return nil, fmt.Errorf("credit game_token balance: %w", err)
 		}
 
 	case RedeemTypeConcurrency:
@@ -516,7 +542,8 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	// 事务提交成功后失效缓存
 	s.invalidateRedeemCaches(ctx, userID, redeemCode)
 
-	// 余额类正数兑换码触发邀请返利（best-effort，失败不影响兑换结果）
+	// 余额类正数兑换码触发邀请返利（best-effort，失败不影响兑换结果）。
+	// game_token deliberately skips affiliate rebate.
 	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 {
 		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, redeemCode.Value)
 	}
@@ -533,7 +560,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 // invalidateRedeemCaches 失效兑换相关的缓存
 func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64, redeemCode *RedeemCode) {
 	switch redeemCode.Type {
-	case RedeemTypeBalance:
+	case RedeemTypeBalance, RedeemTypeGameToken:
 		if s.authCacheInvalidator != nil {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 		}
@@ -635,6 +662,31 @@ func (s *RedeemService) Delete(ctx context.Context, id int64) error {
 	}
 
 	return nil
+}
+
+func (s *RedeemService) lookupGameTokenValueText(ctx context.Context, codeID int64, value float64) (string, error) {
+	if value <= 0 {
+		return "", infraerrors.BadRequest("REDEEM_CODE_INVALID", "game_token value must be positive")
+	}
+	if getter, ok := s.redeemRepo.(interface {
+		GetValueText(ctx context.Context, id int64) (string, error)
+	}); ok {
+		text, err := getter.GetValueText(ctx, codeID)
+		if err != nil {
+			return "", fmt.Errorf("read game_token value text: %w", err)
+		}
+		normalized, normErr := normalizeGameWalletDecimal(text, false)
+		if normErr != nil {
+			return "", infraerrors.BadRequest("REDEEM_CODE_INVALID", "game_token value is not an exact positive decimal")
+		}
+		return normalized, nil
+	}
+	text := strconv.FormatFloat(value, 'f', 8, 64)
+	normalized, err := normalizeGameWalletDecimal(text, false)
+	if err != nil {
+		return "", infraerrors.BadRequest("REDEEM_CODE_INVALID", "game_token value is not an exact positive decimal")
+	}
+	return normalized, nil
 }
 
 // GetStats 获取兑换码统计信息

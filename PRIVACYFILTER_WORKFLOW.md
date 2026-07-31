@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.1.165`, released as
-`0.1.165-r19`. The upgrade retained the three fixes introduced in upstream
+`0.1.165-r20`. The upgrade retained the three fixes introduced in upstream
 `v0.1.164`:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);

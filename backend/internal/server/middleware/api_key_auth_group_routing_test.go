@@ -55,6 +55,39 @@ func TestAPIKeyAuthGroupRoutingSelectsRequestLocalGroupAndRestoresBody(t *testin
 	require.Equal(t, service.PlatformOpenAI, source.Group.Platform)
 }
 
+func TestAPIKeyAuthGroupRoutingKeepsClaudeOnEnabledOpenAIDefault(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	source := routableAPIKeyForMiddlewareTest()
+	source.Group.AllowMessagesDispatch = true
+	source.Groups[0].AllowMessagesDispatch = true
+	repo := fakeAPIKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		return source, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	apiKeyService := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+	body := `{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"hello"}]}`
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.POST("/v1/messages", func(c *gin.Context) {
+		selected, ok := GetAPIKeyFromContext(c)
+		require.True(t, ok)
+		require.Equal(t, int64(2), *selected.GroupID)
+		require.Equal(t, service.PlatformOpenAI, selected.Group.Platform)
+		restored, err := io.ReadAll(c.Request.Body)
+		require.NoError(t, err)
+		require.Equal(t, body, string(restored))
+		c.Status(http.StatusNoContent)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	req.Header.Set("x-api-key", source.Key)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
 func TestAPIKeyAuthGroupRoutingUsesSelectedGroupForSubscription(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	source := routableAPIKeyForMiddlewareTest()

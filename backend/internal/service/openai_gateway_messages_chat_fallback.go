@@ -60,6 +60,13 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	billingModel := resolveOpenAIForwardModel(account, anthropicReq.Model, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	chatReq.Model = upstreamModel
+	if normalizeDeepSeekThinkingToolChoice(chatReq, upstreamModel) {
+		logger.L().Debug("openai messages chat fallback: normalized unsupported DeepSeek thinking tool choice",
+			zap.Int64("account_id", account.ID),
+			zap.String("original_model", originalModel),
+			zap.String("upstream_model", upstreamModel),
+		)
+	}
 	chatReq.Stream = clientStream
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}

@@ -40,5 +40,5 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
   -tags embed \
   -ldflags="-s -w -X main.Version=$VERSION" \
   -trimpath \
-  -o "../build/sub2api-privacyfilter-$VERSION-linux-amd64" \
+  -o "../build/sub2api-$VERSION-linux-amd64" \
   ./cmd/server

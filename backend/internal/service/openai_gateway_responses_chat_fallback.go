@@ -64,6 +64,13 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 billingModel 算出之后。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 	chatReq.Model = upstreamModel
+	if normalizeDeepSeekThinkingToolChoice(chatReq, upstreamModel) {
+		logger.L().Debug("openai responses chat fallback: normalized unsupported DeepSeek thinking tool choice",
+			zap.Int64("account_id", account.ID),
+			zap.String("original_model", originalModel),
+			zap.String("upstream_model", upstreamModel),
+		)
+	}
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
 	}
@@ -115,6 +122,42 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+}
+
+// normalizeDeepSeekThinkingToolChoice keeps Responses clients compatible with
+// DeepSeek thinking models. Those models accept tools with automatic selection,
+// but reject required or named tool_choice values with a 400 response.
+func normalizeDeepSeekThinkingToolChoice(req *apicompat.ChatCompletionsRequest, upstreamModel string) bool {
+	if req == nil || len(req.Tools) == 0 || !isDeepSeekThinkingToolChoiceRestrictedModel(upstreamModel) {
+		return false
+	}
+
+	raw := req.ToolChoice
+	var stringChoice string
+	if err := json.Unmarshal(raw, &stringChoice); err == nil {
+		if !strings.EqualFold(strings.TrimSpace(stringChoice), "required") {
+			return false
+		}
+		req.ToolChoice = json.RawMessage(`"auto"`)
+		return true
+	}
+
+	var objectChoice struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &objectChoice); err != nil || !strings.EqualFold(strings.TrimSpace(objectChoice.Type), "function") {
+		return false
+	}
+	req.ToolChoice = json.RawMessage(`"auto"`)
+	return true
+}
+
+func isDeepSeekThinkingToolChoiceRestrictedModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(lastOpenAIModelSegment(model)))
+	return model == "deepseek-v4" ||
+		strings.HasPrefix(model, "deepseek-v4-") ||
+		model == "deepseek-reasoner" ||
+		strings.HasPrefix(model, "deepseek-reasoner-")
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
