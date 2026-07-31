@@ -146,7 +146,9 @@ func (r *gameTokenUserRepo) GetByID(context.Context, int64) (*User, error) {
 func (r *gameTokenUserRepo) GetByEmail(context.Context, string) (*User, error) {
 	panic("unexpected")
 }
-func (r *gameTokenUserRepo) Update(context.Context, *User) error { panic("unexpected") }
+func (r *gameTokenUserRepo) Update(context.Context, *User, UserUpdateFields) error {
+	panic("unexpected")
+}
 func (r *gameTokenUserRepo) Delete(context.Context, int64) error { panic("unexpected") }
 func (r *gameTokenUserRepo) List(context.Context, pagination.PaginationParams) ([]User, *pagination.PaginationResult, error) {
 	panic("unexpected")

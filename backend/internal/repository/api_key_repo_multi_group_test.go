@@ -105,7 +105,7 @@ func TestAPIKeyRepositoryUpdateReplacesBindings(t *testing.T) {
 
 	key.GroupID = &claudeGroup.ID
 	key.GroupIDs = []int64{grokGroup.ID, claudeGroup.ID}
-	require.NoError(t, repo.Update(ctx, key))
+	require.NoError(t, repo.Update(ctx, key, service.APIKeyUpdateFields{GroupID: true}))
 
 	got, err := repo.GetByID(ctx, key.ID)
 	require.NoError(t, err)
@@ -132,7 +132,7 @@ func TestAPIKeyRepositoryLegacyUpdateReplacesBindingsWithDefaultOnly(t *testing.
 
 	key.GroupID = &grokGroup.ID
 	key.GroupIDs = nil
-	require.NoError(t, repo.Update(ctx, key))
+	require.NoError(t, repo.Update(ctx, key, service.APIKeyUpdateFields{GroupID: true}))
 
 	got, err := repo.GetByID(ctx, key.ID)
 	require.NoError(t, err)
@@ -157,7 +157,7 @@ func TestAPIKeyRepositoryUpdateAllowsEmptyBindings(t *testing.T) {
 
 	key.GroupID = nil
 	key.GroupIDs = nil
-	require.NoError(t, repo.Update(ctx, key))
+	require.NoError(t, repo.Update(ctx, key, service.APIKeyUpdateFields{GroupID: true}))
 
 	got, err := repo.GetByID(ctx, key.ID)
 	require.NoError(t, err)
@@ -206,7 +206,7 @@ func TestAPIKeyRepositoryUpdateRollsBackWhenBindingWriteFails(t *testing.T) {
 	key.Name = "Must Roll Back"
 	key.GroupID = &newDefaultGroup.ID
 	key.GroupIDs = []int64{newDefaultGroup.ID, newDefaultGroup.ID + 1_000_000}
-	require.Error(t, repo.Update(ctx, key))
+	require.Error(t, repo.Update(ctx, key, service.APIKeyUpdateFields{Name: true, GroupID: true}))
 
 	got, err := repo.GetByID(ctx, key.ID)
 	require.NoError(t, err)
@@ -264,7 +264,7 @@ func TestAPIKeyRepositoryReadMergesLegacyDefaultWithJoinBindings(t *testing.T) {
 	require.Equal(t, legacyDefault.ID, *got.GroupID)
 
 	got.Name = "Rolling Upgrade Updated"
-	require.NoError(t, repo.Update(ctx, got))
+	require.NoError(t, repo.Update(ctx, got, service.APIKeyUpdateFields{Name: true}))
 	afterUpdate, err := repo.GetByID(ctx, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, []int64{joinGroup.ID, legacyDefault.ID}, afterUpdate.GroupIDs)

@@ -41,6 +41,7 @@ func TestLeaderboardRateLimitFailsClosedWhenRedisUnavailable(t *testing.T) {
 		servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() }),
 		nil,
 		redisClient,
+		nil,
 	)
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/user/game-wallet/leaderboard?game_id=snake", nil)

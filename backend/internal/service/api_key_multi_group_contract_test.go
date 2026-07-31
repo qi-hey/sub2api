@@ -203,7 +203,7 @@ func (r *multiGroupContractAPIKeyRepo) GetByID(_ context.Context, _ int64) (*API
 	return cloneMultiGroupContractAPIKey(r.existing), nil
 }
 
-func (r *multiGroupContractAPIKeyRepo) Update(_ context.Context, key *APIKey) error {
+func (r *multiGroupContractAPIKeyRepo) Update(_ context.Context, key *APIKey, _ APIKeyUpdateFields) error {
 	r.updated = cloneMultiGroupContractAPIKey(key)
 	return nil
 }
