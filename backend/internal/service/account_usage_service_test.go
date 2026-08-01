@@ -9,8 +9,12 @@ import (
 
 type accountUsageCodexProbeRepo struct {
 	stubOpenAIAccountRepo
-	updateExtraCh chan map[string]any
-	rateLimitCh   chan time.Time
+	updateExtraCh       chan map[string]any
+	rateLimitCh         chan time.Time
+	clearObservedResult bool
+	clearObservedCalls  int
+	observedLimitedAt   time.Time
+	observedResetAt     time.Time
 }
 
 func (r *accountUsageCodexProbeRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -29,6 +33,23 @@ func (r *accountUsageCodexProbeRepo) SetRateLimited(_ context.Context, _ int64, 
 		r.rateLimitCh <- resetAt
 	}
 	return nil
+}
+
+func (r *accountUsageCodexProbeRepo) ClearRateLimitIfObserved(_ context.Context, _ int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	r.clearObservedCalls++
+	r.observedLimitedAt = observedLimitedAt
+	r.observedResetAt = observedResetAt
+	return r.clearObservedResult, nil
+}
+
+type accountUsageRuntimeBlocker struct {
+	clearedIDs []int64
+}
+
+func (b *accountUsageRuntimeBlocker) BlockAccountScheduling(*Account, time.Time, string) {}
+
+func (b *accountUsageRuntimeBlocker) ClearAccountSchedulingBlock(accountID int64) {
+	b.clearedIDs = append(b.clearedIDs, accountID)
 }
 
 func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
@@ -138,6 +159,67 @@ func TestExtractOpenAICodexProbeUpdatesAccepts429WithCodexHeaders(t *testing.T) 
 	}
 	if got := updates["codex_7d_used_percent"]; got != 100.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
+	}
+}
+
+func TestAccountUsageService_ClearOpenAIRateLimitAfterSuccessfulProbe(t *testing.T) {
+	t.Parallel()
+
+	limitedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)
+	resetAt := time.Now().Add(4 * 24 * time.Hour).UTC().Truncate(time.Microsecond)
+	repo := &accountUsageCodexProbeRepo{clearObservedResult: true}
+	blocker := &accountUsageRuntimeBlocker{}
+	svc := &AccountUsageService{accountRepo: repo, runtimeBlocker: blocker}
+	account := &Account{
+		ID:               32086,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeOAuth,
+		RateLimitedAt:    &limitedAt,
+		RateLimitResetAt: &resetAt,
+	}
+
+	svc.clearOpenAIRateLimitAfterSuccessfulProbe(context.Background(), account)
+
+	if repo.clearObservedCalls != 1 {
+		t.Fatalf("ClearRateLimitIfObserved calls = %d, want 1", repo.clearObservedCalls)
+	}
+	if !repo.observedLimitedAt.Equal(limitedAt) || !repo.observedResetAt.Equal(resetAt) {
+		t.Fatalf("observed generation = (%v, %v), want (%v, %v)", repo.observedLimitedAt, repo.observedResetAt, limitedAt, resetAt)
+	}
+	if account.RateLimitedAt != nil || account.RateLimitResetAt != nil {
+		t.Fatal("expected in-memory rate-limit state to be cleared")
+	}
+	if len(blocker.clearedIDs) != 1 || blocker.clearedIDs[0] != account.ID {
+		t.Fatalf("runtime blocker cleared IDs = %v, want [%d]", blocker.clearedIDs, account.ID)
+	}
+}
+
+func TestAccountUsageService_DoesNotClearNewerOpenAIRateLimitGeneration(t *testing.T) {
+	t.Parallel()
+
+	limitedAt := time.Now().Add(-time.Hour)
+	resetAt := time.Now().Add(4 * 24 * time.Hour)
+	repo := &accountUsageCodexProbeRepo{clearObservedResult: false}
+	blocker := &accountUsageRuntimeBlocker{}
+	svc := &AccountUsageService{accountRepo: repo, runtimeBlocker: blocker}
+	account := &Account{
+		ID:               32086,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeOAuth,
+		RateLimitedAt:    &limitedAt,
+		RateLimitResetAt: &resetAt,
+	}
+
+	svc.clearOpenAIRateLimitAfterSuccessfulProbe(context.Background(), account)
+
+	if repo.clearObservedCalls != 1 {
+		t.Fatalf("ClearRateLimitIfObserved calls = %d, want 1", repo.clearObservedCalls)
+	}
+	if account.RateLimitedAt == nil || account.RateLimitResetAt == nil {
+		t.Fatal("a newer rate-limit generation must remain intact")
+	}
+	if len(blocker.clearedIDs) != 0 {
+		t.Fatalf("runtime blocker must remain when the observed generation did not clear: %v", blocker.clearedIDs)
 	}
 }
 

@@ -20,6 +20,7 @@ type ModelPlazaHandler struct {
 	channelService *service.ChannelService
 	apiKeyService  *service.APIKeyService
 	settingService *service.SettingService
+	gatewayService *service.GatewayService
 }
 
 // NewModelPlazaHandler 创建模型广场 handler。
@@ -27,11 +28,13 @@ func NewModelPlazaHandler(
 	channelService *service.ChannelService,
 	apiKeyService *service.APIKeyService,
 	settingService *service.SettingService,
+	gatewayService *service.GatewayService,
 ) *ModelPlazaHandler {
 	return &ModelPlazaHandler{
 		channelService: channelService,
 		apiKeyService:  apiKeyService,
 		settingService: settingService,
+		gatewayService: gatewayService,
 	}
 }
 
@@ -94,7 +97,21 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 		return
 	}
 
-	groups, err := h.channelService.ListPlazaGroups(c.Request.Context())
+	groups, err := h.channelService.ListPlazaGroupsWithModelFallback(c.Request.Context(), func(group *service.Group) []string {
+		if group == nil {
+			return nil
+		}
+		if group.CustomModelsListEnabled() {
+			return append([]string(nil), group.ModelsListConfig.Models...)
+		}
+		if h.gatewayService != nil {
+			groupID := group.ID
+			if models := h.gatewayService.GetAvailableModels(c.Request.Context(), &groupID, group.Platform); len(models) > 0 {
+				return models
+			}
+		}
+		return append([]string(nil), group.ModelsListConfig.Models...)
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

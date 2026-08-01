@@ -302,6 +302,7 @@ type AccountUsageService struct {
 	tlsFPProfileService     *TLSFingerprintProfileService
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
+	runtimeBlocker          AccountRuntimeBlocker
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -794,11 +795,51 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if err != nil {
 		return nil, err
 	}
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		s.clearOpenAIRateLimitAfterSuccessfulProbe(ctx, account)
+	}
 	if len(updates) > 0 {
 		s.persistOpenAICodexProbeSnapshot(account.ID, updates)
 		return updates, nil
 	}
 	return nil, nil
+}
+
+type openAIRateLimitRecoveryRepository interface {
+	ClearRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error)
+}
+
+// A successful Codex probe proves that the account can serve requests again.
+// Clear only the exact 429 generation observed before the probe, so a newer
+// concurrent 429 cannot be erased by an older successful response.
+func (s *AccountUsageService) clearOpenAIRateLimitAfterSuccessfulProbe(ctx context.Context, account *Account) {
+	if s == nil || s.accountRepo == nil || account == nil || !account.IsOpenAIOAuth() || account.IsShadow() ||
+		account.RateLimitedAt == nil || account.RateLimitResetAt == nil {
+		return
+	}
+	recoveryRepo, ok := s.accountRepo.(openAIRateLimitRecoveryRepository)
+	if !ok {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	observedLimitedAt := *account.RateLimitedAt
+	observedResetAt := *account.RateLimitResetAt
+	cleared, err := recoveryRepo.ClearRateLimitIfObserved(ctx, account.ID, observedLimitedAt, observedResetAt)
+	if err != nil {
+		slog.Warn("openai_rate_limit_recovery_clear_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	if !cleared {
+		return
+	}
+	account.RateLimitedAt = nil
+	account.RateLimitResetAt = nil
+	if s.runtimeBlocker != nil {
+		s.runtimeBlocker.ClearAccountSchedulingBlock(account.ID)
+	}
+	slog.Info("openai_rate_limit_cleared_after_successful_probe", "account_id", account.ID)
 }
 
 func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, updates map[string]any) {

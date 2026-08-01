@@ -167,6 +167,7 @@ func ProvideAccountUsageService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
+	service.runtimeBlocker = openAIGatewayService
 	return service
 }
 

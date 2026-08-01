@@ -56,6 +56,17 @@ type PlazaGroup struct {
 //
 // 可见性过滤（专属分组）不在此层做，由 handler 按登录态裁剪。
 func (s *ChannelService) ListPlazaGroups(ctx context.Context) ([]PlazaGroup, error) {
+	return s.listPlazaGroups(ctx, nil)
+}
+
+// ListPlazaGroupsWithModelFallback augments the upstream channel-backed plaza
+// with models supplied by account-pool groups. Channel pricing remains
+// authoritative when the same model is present in both sources.
+func (s *ChannelService) ListPlazaGroupsWithModelFallback(ctx context.Context, fallback func(*Group) []string) ([]PlazaGroup, error) {
+	return s.listPlazaGroups(ctx, fallback)
+}
+
+func (s *ChannelService) listPlazaGroups(ctx context.Context, fallback func(*Group) []string) ([]PlazaGroup, error) {
 	channels, err := s.repo.ListAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list channels: %w", err)
@@ -115,18 +126,47 @@ func (s *ChannelService) ListPlazaGroups(ctx context.Context) ([]PlazaGroup, err
 				if m.Platform != pg.Platform {
 					continue
 				}
-				if at, seen := idx[m.Name]; seen {
+				key := strings.ToLower(m.Name)
+				if at, seen := idx[key]; seen {
 					// 先见者胜；仅当已存条目无定价而新条目有定价时升级。
 					if pg.Models[at].Pricing == nil && m.Pricing != nil {
 						pg.Models[at].Pricing = m.Pricing
 					}
 					continue
 				}
-				idx[m.Name] = len(pg.Models)
+				idx[key] = len(pg.Models)
 				pg.Models = append(pg.Models, PlazaModel{
 					Name:     m.Name,
 					Platform: m.Platform,
 					Pricing:  m.Pricing,
+				})
+			}
+		}
+	}
+
+	if fallback != nil {
+		for i := range groups {
+			g := &groups[i]
+			pg := byGroup[g.ID]
+			idx := modelIdx[g.ID]
+			if idx == nil {
+				idx = make(map[string]int)
+				modelIdx[g.ID] = idx
+			}
+			for _, modelName := range fallback(g) {
+				modelName = strings.TrimSpace(modelName)
+				if modelName == "" {
+					continue
+				}
+				key := strings.ToLower(modelName)
+				if _, exists := idx[key]; exists {
+					continue
+				}
+				idx[key] = len(pg.Models)
+				pg.Models = append(pg.Models, PlazaModel{
+					Name:     modelName,
+					Platform: g.Platform,
+					Pricing:  s.lookupAccountPoolPricing(modelName),
 				})
 			}
 		}
@@ -153,6 +193,35 @@ func (s *ChannelService) ListPlazaGroups(ctx context.Context) ([]PlazaGroup, err
 		return out[i].Name < out[j].Name
 	})
 	return out, nil
+}
+
+func (s *ChannelService) lookupAccountPoolPricing(modelName string) *ChannelModelPricing {
+	if s.pricingService == nil {
+		return nil
+	}
+	lp := s.pricingService.GetModelPricing(modelName)
+	if lp == nil {
+		return nil
+	}
+	if lp.TokenPricingAbsent {
+		if lp.OutputCostPerImage <= 0 {
+			return nil
+		}
+		return &ChannelModelPricing{
+			Platform:        "",
+			Models:          []string{modelName},
+			BillingMode:     BillingModeImage,
+			PerRequestPrice: nonZeroPtr(lp.OutputCostPerImage),
+		}
+	}
+	return &ChannelModelPricing{
+		Models:          []string{modelName},
+		BillingMode:     BillingModeToken,
+		InputPrice:      nonZeroPtr(lp.InputCostPerToken),
+		OutputPrice:     nonZeroPtr(lp.OutputCostPerToken),
+		CacheWritePrice: nonZeroPtr(lp.CacheCreationInputTokenCost),
+		CacheReadPrice:  nonZeroPtr(lp.CacheReadInputTokenCost),
+	}
 }
 
 // lookupOfficialPricing 查询模型的 LiteLLM 官方参考价，带 memo 避免同名模型重复转换。

@@ -173,6 +173,53 @@ func TestListPlazaGroups_OfficialPricingFill(t *testing.T) {
 	require.Nil(t, byName["token-absent"].OfficialPricing)
 }
 
+func TestListPlazaGroupsWithModelFallback_AccountPoolModelsAndPricing(t *testing.T) {
+	pricingSvc := newStubPricingServiceFromMap(map[string]*LiteLLMModelPricing{
+		"gpt-5.5": {
+			InputCostPerToken:           1.25e-6,
+			OutputCostPerToken:          10e-6,
+			CacheReadInputTokenCost:     0.125e-6,
+			CacheCreationInputTokenCost: 1.25e-6,
+		},
+	})
+	groups := []Group{{
+		ID:             2,
+		Name:           "Codex",
+		Platform:       PlatformOpenAI,
+		RateMultiplier: 1,
+	}}
+	svc := newPlazaChannelService(nil, groups, pricingSvc)
+
+	out, err := svc.ListPlazaGroupsWithModelFallback(context.Background(), func(group *Group) []string {
+		require.Equal(t, int64(2), group.ID)
+		return []string{"gpt-5.5", "gpt-5.5", ""}
+	})
+
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Models, 1)
+	model := out[0].Models[0]
+	require.Equal(t, "gpt-5.5", model.Name)
+	require.NotNil(t, model.Pricing)
+	require.InDelta(t, 1.25e-6, *model.Pricing.InputPrice, 1e-12)
+	require.NotNil(t, model.OfficialPricing)
+}
+
+func TestListPlazaGroupsWithModelFallback_ChannelPricingWins(t *testing.T) {
+	groups := []Group{{ID: 2, Name: "Codex", Platform: PlatformOpenAI, RateMultiplier: 1}}
+	channel := plazaPricedChannel(1, "custom", []int64{2}, PlatformOpenAI, "gpt-5.5")
+	svc := newPlazaChannelService([]Channel{channel}, groups, nil)
+
+	out, err := svc.ListPlazaGroupsWithModelFallback(context.Background(), func(*Group) []string {
+		return []string{"gpt-5.5"}
+	})
+
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Models, 1)
+	require.InDelta(t, 3e-6, *out[0].Models[0].Pricing.InputPrice, 1e-12)
+}
+
 func TestListPlazaGroups_RepoErrorsPropagate(t *testing.T) {
 	sentinel := errors.New("boom")
 	repo := &mockChannelRepository{
