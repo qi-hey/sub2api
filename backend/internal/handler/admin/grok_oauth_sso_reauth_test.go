@@ -23,6 +23,10 @@ func (s *grokSSOReauthOAuthClientStub) RefreshToken(context.Context, string, str
 	return &xai.TokenResponse{}, nil
 }
 
+func (s *grokSSOReauthOAuthClientStub) LoginWithPassword(context.Context, string, string, string) (*service.GrokPasswordLoginResult, error) {
+	return nil, nil
+}
+
 func (s *grokSSOReauthOAuthClientStub) ConvertSSOToBuild(context.Context, string, string) (*xai.TokenResponse, error) {
 	return s.ssoResponse, nil
 }

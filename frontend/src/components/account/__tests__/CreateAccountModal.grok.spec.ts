@@ -28,4 +28,8 @@ describe('CreateAccountModal Grok account types', () => {
     expect(source.match(/validateGrokOAuthUpstreamConfig\(\)/g)?.length).toBe(4)
     expect(source.match(/applyGrokOAuthUpstreamConfig\(credentials\)/g)?.length).toBe(4)
   })
+
+  it('hides Grok password authorize option in the create flow', () => {
+    expect(source).toContain(':show-email-password-option="false"')
+  })
 })

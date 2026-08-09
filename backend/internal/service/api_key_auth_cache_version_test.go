@@ -108,7 +108,7 @@ func TestAPIKeyService_MultiGroupAuthSnapshotRoundTrip(t *testing.T) {
 	svc := &APIKeyService{}
 	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
 	require.NotNil(t, snapshot)
-	require.Equal(t, 18, snapshot.Version)
+	require.Equal(t, 20, snapshot.Version)
 
 	roundTrip, used, err := svc.applyAuthCacheEntry(apiKey.Key, &APIKeyAuthCacheEntry{Snapshot: snapshot})
 	require.NoError(t, err)

@@ -185,8 +185,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				gq.Select(group.FieldID)
 			})
 		}).
-		WithGroup(selectAPIKeyAuthGroupFields).
-		WithGroups(selectAPIKeyAuthGroupFields).
+			WithGroup(selectAPIKeyAuthGroupFields).
+			WithGroups(selectAPIKeyAuthGroupFields).
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
@@ -221,7 +221,12 @@ func selectAPIKeyAuthGroupFields(q *dbent.GroupQuery) {
 		group.FieldVideoPrice480p,
 		group.FieldVideoPrice720p,
 		group.FieldVideoPrice1080p,
+		group.FieldVideoModelPrices,
 		group.FieldWebSearchPricePerCall,
+		group.FieldSearchPricePer1k,
+		group.FieldAudioRealtimePricePerMin,
+		group.FieldAudioTtsPricePerMillionChars,
+		group.FieldAudioSttPricePerHour,
 		group.FieldClaudeCodeOnly,
 		group.FieldFallbackGroupID,
 		group.FieldFallbackGroupIDOnInvalidRequest,
@@ -241,6 +246,9 @@ func selectAPIKeyAuthGroupFields(q *dbent.GroupQuery) {
 		group.FieldPeakStart,
 		group.FieldPeakEnd,
 		group.FieldPeakRateMultiplier,
+		group.FieldProfitControlEnabled,
+		group.FieldProfitMinMargin,
+		group.FieldProfitSafetyBuffer,
 	)
 }
 
@@ -1262,7 +1270,12 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		VideoPrice480P:                  g.VideoPrice480p,
 		VideoPrice720P:                  g.VideoPrice720p,
 		VideoPrice1080P:                 g.VideoPrice1080p,
+		VideoModelPrices:                service.NormalizeVideoModelPrices(g.VideoModelPrices),
 		WebSearchPricePerCall:           g.WebSearchPricePerCall,
+		SearchPricePer1k:                g.SearchPricePer1k,
+		AudioRealtimePricePerMin:        g.AudioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:    g.AudioTtsPricePerMillionChars,
+		AudioSTTPricePerHour:            g.AudioSttPricePerHour,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
@@ -1286,6 +1299,9 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,
 		PeakRateMultiplier:              g.PeakRateMultiplier,
+		ProfitControlEnabled:            g.ProfitControlEnabled,
+		ProfitMinMargin:                 g.ProfitMinMargin,
+		ProfitSafetyBuffer:              g.ProfitSafetyBuffer,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}
