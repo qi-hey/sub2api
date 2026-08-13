@@ -18,6 +18,8 @@ func shouldStripOpenAIResponsesInputItemID(itemType, id string) bool {
 	switch itemType {
 	case "message":
 		expectedPrefix = "msg"
+	case "reasoning":
+		expectedPrefix = "rs"
 	case "custom_tool_call":
 		expectedPrefix = "ctc"
 	case "tool_search_call":
