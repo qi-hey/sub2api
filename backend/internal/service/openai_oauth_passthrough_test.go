@@ -780,12 +780,17 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesJSONAndKeepsNonStreami
 	}
 
 	account := &Account{
-		ID:             123,
-		Name:           "acc",
-		Platform:       PlatformOpenAI,
-		Type:           AccountTypeOAuth,
-		Concurrency:    1,
-		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		ID:          123,
+		Name:        "acc",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":          "oauth-token",
+			"chatgpt_account_id":    "chatgpt-acc",
+			"model_mapping":         map[string]any{"gpt-5.1-codex": "gpt-5.1-account"},
+			"compact_model_mapping": map[string]any{"gpt-5.1-codex": "gpt-5.1-compact"},
+		},
 		Extra:          map[string]any{"openai_passthrough": true},
 		Status:         StatusActive,
 		Schedulable:    true,
@@ -799,7 +804,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesJSONAndKeepsNonStreami
 
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "stream").Exists())
-	require.Equal(t, "gpt-5.1-codex", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "gpt-5.1-compact", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "compact me", gjson.GetBytes(upstream.lastBody, "input.0.text").String())
 	require.Equal(t, "local-test-instructions", strings.TrimSpace(gjson.GetBytes(upstream.lastBody, "instructions").String()))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))
@@ -2758,7 +2763,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamClientDisconnectStillCollec
 	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
 }
 
-func TestOpenAIGatewayService_APIKeyPassthrough_PreservesBodyAndUsesResponsesEndpoint(t *testing.T) {
+func TestOpenAIGatewayService_APIKeyPassthrough_AppliesAccountMappingAndUsesResponsesEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -2784,12 +2789,16 @@ func TestOpenAIGatewayService_APIKeyPassthrough_PreservesBodyAndUsesResponsesEnd
 	}
 
 	account := &Account{
-		ID:             456,
-		Name:           "apikey-acc",
-		Platform:       PlatformOpenAI,
-		Type:           AccountTypeAPIKey,
-		Concurrency:    1,
-		Credentials:    map[string]any{"api_key": "sk-api-key", "base_url": "https://api.openai.com"},
+		ID:          456,
+		Name:        "apikey-acc",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":       "sk-api-key",
+			"base_url":      "https://api.openai.com",
+			"model_mapping": map[string]any{"gpt-5.2": "gpt-5.2-account"},
+		},
 		Extra:          map[string]any{"openai_passthrough": true},
 		Status:         StatusActive,
 		Schedulable:    true,
@@ -2802,7 +2811,8 @@ func TestOpenAIGatewayService_APIKeyPassthrough_PreservesBodyAndUsesResponsesEnd
 	require.NotNil(t, result.ServiceTier)
 	require.Equal(t, "flex", *result.ServiceTier)
 	require.NotNil(t, upstream.lastReq)
-	require.Equal(t, originalBody, upstream.lastBody)
+	expectedBody := []byte(`{"model":"gpt-5.2-account","stream":false,"service_tier":"flex","max_output_tokens":128,"input":[{"type":"text","text":"hi"}]}`)
+	require.Equal(t, expectedBody, upstream.lastBody)
 	require.Equal(t, "https://api.openai.com/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer sk-api-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "curl/8.0", upstream.lastReq.Header.Get("User-Agent"))
