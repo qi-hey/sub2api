@@ -15,7 +15,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 20 // v20: multi-group routing plus search/audio/video/profit-control fields
+const apiKeyAuthSnapshotVersion = 21 // v21: multi-group routing plus complete pricing and profit-control fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -396,8 +396,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			if groupSnapshot != nil {
 				snapshot.Groups = append(snapshot.Groups, *groupSnapshot)
 			}
-			}
 		}
+	}
 	return snapshot
 }
 
@@ -480,8 +480,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			if group != nil {
 				apiKey.Groups = append(apiKey.Groups, *group)
 			}
-			}
 		}
+	}
 	s.compileAPIKeyIPRules(apiKey)
 	return apiKey
 }
@@ -520,6 +520,8 @@ func apiKeyAuthGroupSnapshotFromGroup(group *Group) *APIKeyAuthGroupSnapshot {
 		AudioRealtimePricePerMin:        group.AudioRealtimePricePerMin,
 		AudioTTSPricePerMillionChars:    group.AudioTTSPricePerMillionChars,
 		AudioSTTPricePerHour:            group.AudioSTTPricePerHour,
+		LongContextPricingEnabled:       group.LongContextPricingEnabled,
+		ModelPricing:                    group.ModelPricing,
 		ClaudeCodeOnly:                  group.ClaudeCodeOnly,
 		FallbackGroupID:                 group.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: group.FallbackGroupIDOnInvalidRequest,
@@ -579,6 +581,8 @@ func apiKeyAuthGroupFromSnapshot(snapshot *APIKeyAuthGroupSnapshot) *Group {
 		AudioRealtimePricePerMin:        snapshot.AudioRealtimePricePerMin,
 		AudioTTSPricePerMillionChars:    snapshot.AudioTTSPricePerMillionChars,
 		AudioSTTPricePerHour:            snapshot.AudioSTTPricePerHour,
+		LongContextPricingEnabled:       snapshot.LongContextPricingEnabled,
+		ModelPricing:                    snapshot.ModelPricing,
 		ClaudeCodeOnly:                  snapshot.ClaudeCodeOnly,
 		FallbackGroupID:                 snapshot.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: snapshot.FallbackGroupIDOnInvalidRequest,

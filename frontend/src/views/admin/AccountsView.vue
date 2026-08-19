@@ -1497,12 +1497,23 @@ const openGroupProxyBinding = () => {
 }
 
 const refreshAccountLookups = async () => {
-  const [proxyItems, groupItems] = await Promise.all([
-    adminAPI.proxies.getAllWithCount(),
+  const proxyRequest = typeof adminAPI.proxies.getAllWithCount === 'function'
+    ? adminAPI.proxies.getAllWithCount()
+    : adminAPI.proxies.getAll()
+  const [proxiesResult, groupsResult] = await Promise.allSettled([
+    proxyRequest,
     adminAPI.groups.getAll()
   ])
-  proxies.value = proxyItems
-  groups.value = groupItems
+  if (proxiesResult.status === 'fulfilled') {
+    proxies.value = proxiesResult.value
+  } else {
+    console.error('Failed to load proxies:', proxiesResult.reason)
+  }
+  if (groupsResult.status === 'fulfilled') {
+    groups.value = groupsResult.value
+  } else {
+    console.error('Failed to load groups:', groupsResult.reason)
+  }
 }
 
 const handleGroupProxyBindingUpdated = async () => {
@@ -2581,11 +2592,7 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
-  try {
-    await refreshAccountLookups()
-  } catch (error) {
-    console.error('Failed to load proxies/groups:', error)
-  }
+  await refreshAccountLookups()
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)
   document.addEventListener('click', handleClickOutside)

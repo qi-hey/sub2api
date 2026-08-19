@@ -481,6 +481,7 @@ export interface BulkAccountUpdateResult {
   failed: number
   success_ids?: number[]
   failed_ids?: number[]
+  long_context_inherited_count?: number
   results: Array<{ account_id: number; success: boolean; error?: string }>
 }
 
