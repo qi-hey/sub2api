@@ -132,6 +132,17 @@ func codexFingerprintModeRequiresSeed(mode codexFingerprintMode) bool {
 	}
 }
 
+func codexFingerprintModeForCreate(extra map[string]any) codexFingerprintMode {
+	if extra != nil {
+		raw, _ := extra[codexFingerprintModeExtraKey].(string)
+		switch mode := codexFingerprintMode(strings.TrimSpace(raw)); mode {
+		case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
+			return mode
+		}
+	}
+	return codexFingerprintSession
+}
+
 func codexFingerprintSeed(extra map[string]any) (string, bool) {
 	if extra == nil {
 		return "", false
@@ -141,11 +152,16 @@ func codexFingerprintSeed(extra map[string]any) (string, bool) {
 
 func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
 	prepared := stripCodexFingerprintSeed(extra)
-	if platform != PlatformOpenAI || accountType != AccountTypeOAuth || !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
+	if platform != PlatformOpenAI || accountType != AccountTypeOAuth {
 		return prepared
 	}
 	if prepared == nil {
-		prepared = make(map[string]any, 1)
+		prepared = make(map[string]any, 2)
+	}
+	mode := codexFingerprintModeForCreate(prepared)
+	prepared[codexFingerprintModeExtraKey] = string(mode)
+	if !codexFingerprintModeRequiresSeed(mode) {
+		return prepared
 	}
 	prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
 	return prepared

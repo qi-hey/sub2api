@@ -86,6 +86,17 @@ const OAuthAuthorizationFlowStub = defineComponent({
   `,
 })
 
+const SelectStub = defineComponent({
+  name: 'TestSelect',
+  inheritAttrs: false,
+  props: {
+    modelValue: { type: String, default: '' },
+    options: { type: Array, default: () => [] },
+  },
+  emits: ['update:modelValue'],
+  template: '<div v-bind="$attrs" />',
+})
+
 function mountModal(options: { groups?: any[]; simpleMode?: boolean } = {}) {
   authStoreState.isSimpleMode = options.simpleMode ?? true
   return mount(CreateAccountModal, {
@@ -95,7 +106,7 @@ function mountModal(options: { groups?: any[]; simpleMode?: boolean } = {}) {
         BaseDialog: BaseDialogStub,
         OAuthAuthorizationFlow: OAuthAuthorizationFlowStub,
         ConfirmDialog: true,
-        Select: true,
+        Select: SelectStub,
         Icon: true,
         PlatformIcon: true,
         ProxySelector: true,
@@ -279,6 +290,10 @@ async function openCodexImportStep(toggleClicks = 0) {
   return wrapper
 }
 
+function getCodexFingerprintSelect(wrapper: ReturnType<typeof mountModal>) {
+  return wrapper.getComponent('[data-testid="create-codex-fingerprint-mode-select"]')
+}
+
 describe('CreateAccountModal OpenAI long-context billing', () => {
   beforeEach(() => {
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
@@ -292,6 +307,52 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       warnings: [],
     })
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
+  })
+
+  it('defaults new OpenAI OAuth accounts to session fingerprint convergence', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await flushPromises()
+
+    expect(getCodexFingerprintSelect(wrapper).props('modelValue')).toBe('session')
+  })
+
+  it('restores the session fingerprint default when the create dialog is reset', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    getCodexFingerprintSelect(wrapper).vm.$emit('update:modelValue', 'off')
+    await flushPromises()
+    expect(getCodexFingerprintSelect(wrapper).props('modelValue')).toBe('off')
+
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await selectButtonByText(wrapper, 'OpenAI')
+    await flushPromises()
+
+    expect(getCodexFingerprintSelect(wrapper).props('modelValue')).toBe('session')
+  })
+
+  it('submits an explicit off fingerprint mode for OpenAI OAuth imports', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    getCodexFingerprintSelect(wrapper).vm.$emit('update:modelValue', 'off')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Codex import')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+
+    wrapper.getComponent(OAuthAuthorizationFlowStub).vm.$emit('import-codex-session', 'session-json')
+    await flushPromises()
+
+    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.codex_fingerprint_mode).toBe('off')
+  })
+
+  it('does not overwrite existing imported accounts when the fingerprint default is untouched', async () => {
+    const wrapper = await openCodexImportStep()
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+
+    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.codex_fingerprint_mode).toBeUndefined()
   })
 
   it('sends false explicitly for normal OpenAI account creation by default', async () => {
