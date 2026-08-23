@@ -65,6 +65,10 @@ func lowerGrokResponsesCustomToolHistory(value any) bool {
 				typed["type"] = "function_call_output"
 				normalizeGrokResponsesToolOutput(typed)
 				changed = true
+			case "function_call_output":
+				if normalizeGrokResponsesToolOutput(typed) {
+					changed = true
+				}
 			}
 			for _, child := range typed {
 				visit(child)
@@ -80,24 +84,26 @@ func grokResponsesToolProtocolString(value any) string {
 	return text
 }
 
-func normalizeGrokResponsesToolOutput(item map[string]any) {
+func normalizeGrokResponsesToolOutput(item map[string]any) bool {
 	output, exists := item["output"]
 	if !exists {
-		return
+		item["output"] = ""
+		return true
 	}
 	if _, ok := output.(string); ok {
-		return
+		return false
 	}
 	if output == nil {
 		item["output"] = ""
-		return
+		return true
 	}
 	encoded, err := json.Marshal(output)
 	if err != nil {
 		item["output"] = ""
-		return
+		return true
 	}
 	item["output"] = string(encoded)
+	return true
 }
 
 func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {

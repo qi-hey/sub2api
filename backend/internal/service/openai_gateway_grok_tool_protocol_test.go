@@ -142,6 +142,31 @@ func TestAdaptGrokResponsesClientToolsLeavesNativeGrokFunctionHistoryUntouched(t
 	require.Empty(t, mapping.NamespaceTools)
 }
 
+func TestAdaptGrokResponsesClientToolsFillsMissingFunctionCallOutput(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"tools":[],
+		"input":[
+			{"type":"function_call","call_id":"native_call","name":"native_tool","arguments":"{}"},
+			{"type":"function_call_output","call_id":"native_call"},
+			{"type":"custom_tool_call_output","call_id":"custom_call"}
+		]
+	}`)
+
+	patched, mapping, err := adaptGrokResponsesClientTools(body)
+	require.NoError(t, err)
+	require.Empty(t, mapping.CustomTools)
+	require.False(t, mapping.ToolSearch)
+	require.Empty(t, mapping.NamespaceTools)
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.1.type").String())
+	require.True(t, gjson.GetBytes(patched, "input.1.output").Exists())
+	require.Empty(t, gjson.GetBytes(patched, "input.1.output").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.2.type").String())
+	require.True(t, gjson.GetBytes(patched, "input.2.output").Exists())
+	require.Empty(t, gjson.GetBytes(patched, "input.2.output").String())
+}
+
 func TestPatchGrokResponsesBodyWithClientToolsRewritesEveryToolChoice(t *testing.T) {
 	t.Parallel()
 
