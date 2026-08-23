@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -44,39 +45,66 @@ func adaptResponsesClientToolsForFunctionUpstream(body []byte, upstream string) 
 }
 
 func lowerGrokResponsesCustomToolHistory(value any) bool {
+	items, ok := value.([]any)
+	if !ok {
+		return false
+	}
+
 	changed := false
-	var visit func(any)
-	visit = func(value any) {
-		switch typed := value.(type) {
-		case []any:
-			for _, item := range typed {
-				visit(item)
+	for index, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(grokResponsesToolProtocolString(item["type"])) {
+		case "custom_tool_call":
+			input, exists := item["input"]
+			if !exists {
+				input = ""
 			}
-		case map[string]any:
-			switch strings.TrimSpace(grokResponsesToolProtocolString(typed["type"])) {
-			case "custom_tool_call":
-				typed["type"] = "function_call"
-				input := grokResponsesToolProtocolString(typed["input"])
-				arguments, _ := json.Marshal(map[string]string{"input": input})
-				typed["arguments"] = string(arguments)
-				delete(typed, "input")
-				changed = true
-			case "custom_tool_call_output":
-				typed["type"] = "function_call_output"
-				normalizeGrokResponsesToolOutput(typed)
-				changed = true
-			case "function_call_output":
-				if normalizeGrokResponsesToolOutput(typed) {
-					changed = true
-				}
+			arguments, err := json.Marshal(map[string]any{"input": input})
+			if err != nil {
+				arguments = []byte(`{"input":""}`)
 			}
-			for _, child := range typed {
-				visit(child)
+			items[index] = buildGrokResponsesFunctionCall(item, grokResponsesToolProtocolString(item["name"]), string(arguments))
+			changed = true
+		case "tool_search_call":
+			items[index] = buildGrokResponsesFunctionCall(item, "tool_search", grokResponsesToolProtocolJSONText(item["arguments"]))
+			changed = true
+		case "custom_tool_call_output", "tool_search_output", "function_call_output":
+			normalized := buildGrokResponsesFunctionCallOutput(item)
+			if !reflect.DeepEqual(item, normalized) {
+				items[index] = normalized
+				changed = true
 			}
 		}
 	}
-	visit(value)
 	return changed
+}
+
+func buildGrokResponsesFunctionCall(source map[string]any, name, arguments string) map[string]any {
+	item := copyGrokResponsesToolFields(source, "id", "call_id", "status")
+	item["type"] = "function_call"
+	item["name"] = name
+	item["arguments"] = arguments
+	return item
+}
+
+func buildGrokResponsesFunctionCallOutput(source map[string]any) map[string]any {
+	item := copyGrokResponsesToolFields(source, "id", "call_id", "status")
+	item["type"] = "function_call_output"
+	item["output"] = grokResponsesToolOutputText(source["output"])
+	return item
+}
+
+func copyGrokResponsesToolFields(source map[string]any, fields ...string) map[string]any {
+	item := make(map[string]any, len(fields)+3)
+	for _, field := range fields {
+		if value, exists := source[field]; exists {
+			item[field] = value
+		}
+	}
+	return item
 }
 
 func grokResponsesToolProtocolString(value any) string {
@@ -84,26 +112,32 @@ func grokResponsesToolProtocolString(value any) string {
 	return text
 }
 
-func normalizeGrokResponsesToolOutput(item map[string]any) bool {
-	output, exists := item["output"]
-	if !exists {
-		item["output"] = ""
-		return true
+func grokResponsesToolProtocolJSONText(value any) string {
+	if text, ok := value.(string); ok {
+		return text
 	}
-	if _, ok := output.(string); ok {
-		return false
+	if value == nil {
+		return "{}"
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "{}"
+	}
+	return string(encoded)
+}
+
+func grokResponsesToolOutputText(output any) string {
+	if text, ok := output.(string); ok {
+		return text
 	}
 	if output == nil {
-		item["output"] = ""
-		return true
+		return ""
 	}
 	encoded, err := json.Marshal(output)
 	if err != nil {
-		item["output"] = ""
-		return true
+		return ""
 	}
-	item["output"] = string(encoded)
-	return true
+	return string(encoded)
 }
 
 func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {

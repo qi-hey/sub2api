@@ -41,6 +41,15 @@ func buildGrokCompactRequestBody(body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	filtered := input[:0]
+	for _, raw := range input {
+		item, ok := raw.(map[string]any)
+		if ok && strings.TrimSpace(stringValue(item["type"])) == "compaction_trigger" {
+			continue
+		}
+		filtered = append(filtered, raw)
+	}
+	input = filtered
 	input = append(input, map[string]any{
 		"type": "message",
 		"role": "user",

@@ -623,7 +623,7 @@ func TestBuildGrokResponsesRequestUsesAccountBaseURLAndBearerToken(t *testing.T)
 }
 
 func TestBuildGrokCompactRequestBodyUsesResponsesCompactionTurn(t *testing.T) {
-	body := []byte(`{"model":"grok-4.5","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}],"tools":[{"type":"function","name":"shell"}],"stream":true}`)
+	body := []byte(`{"model":"grok-4.5","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]},{"type":"compaction_trigger"}],"tools":[{"type":"function","name":"shell"}],"stream":true}`)
 
 	patched, err := buildGrokCompactRequestBody(body)
 	require.NoError(t, err)
@@ -632,11 +632,66 @@ func TestBuildGrokCompactRequestBodyUsesResponsesCompactionTurn(t *testing.T) {
 	require.Equal(t, "none", gjson.GetBytes(patched, "tool_choice").String())
 	require.Equal(t, "reasoning.encrypted_content", gjson.GetBytes(patched, "include.0").String())
 	require.Equal(t, "hello", gjson.GetBytes(patched, "input.0.content.0.text").String())
+	require.False(t, gjson.GetBytes(patched, `input.#(type=="compaction_trigger")`).Exists())
 	prompt := gjson.GetBytes(patched, "input.1.content.0.text").String()
 	require.Contains(t, prompt, "1. Primary Request and Intent")
 	require.Contains(t, prompt, "9. Optional Next Step")
 	require.Contains(t, prompt, "Respond with ONLY the <summary>...</summary> block")
 	require.NotContains(t, prompt, "<summary_request>")
+}
+
+func TestForwardGrokResponsesNativeCompactionV2BridgesJSONAndSSE(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	compactResponse := `{"id":"resp_grok_compact","object":"response","status":"completed","model":"grok-4.6","output":[{"id":"rs_1","type":"reasoning","summary":[],"encrypted_content":"grok-state"},{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"summary text"}]}],"usage":{"input_tokens":10,"output_tokens":4,"total_tokens":14}}`
+	tests := []struct {
+		name        string
+		contentType string
+		body        string
+	}{
+		{name: "json", contentType: "application/json", body: compactResponse},
+		{
+			name:        "sse",
+			contentType: "text/event-stream",
+			body: "event: response.completed\n" +
+				`data: {"type":"response.completed","response":` + compactResponse + `}` + "\n\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			requestBody := []byte(`{"model":"grok-4.6","stream":true,"service_tier":"fast","input":[{"type":"message","role":"user","content":"hello"},{"type":"compaction_trigger"}]}`)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(requestBody))
+			MarkOpenAINativeCompactionV2(c)
+			MarkOpenAICompactClientStream(c)
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{tt.contentType}},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}}
+			svc := &OpenAIGatewayService{httpUpstream: upstream}
+			account := grokProtocolAPIKeyAccount(7190)
+
+			result, err := svc.forwardGrokResponses(context.Background(), c, account, requestBody, "grok-4.6", true, time.Now())
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.True(t, result.Stream)
+			require.Equal(t, "resp_grok_compact", result.ResponseID)
+			require.False(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+			require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
+			require.False(t, gjson.GetBytes(upstream.lastBody, `input.#(type=="compaction_trigger")`).Exists())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
+			require.Empty(t, upstream.lastReq.Header.Get(grokConversationIDHeader))
+			require.Contains(t, recorder.Header().Get("Content-Type"), "text/event-stream")
+			require.Contains(t, recorder.Body.String(), "event: response.output_item.done")
+			require.Contains(t, recorder.Body.String(), `"type":"compaction"`)
+			require.Contains(t, recorder.Body.String(), "event: response.completed")
+		})
+	}
 }
 
 func TestConvertGrokResponseToOpenAICompact(t *testing.T) {

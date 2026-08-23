@@ -81,12 +81,14 @@ func TestPatchGrokResponsesBodyWithClientToolsLowersHistoryWithoutTools(t *testi
 			t.Parallel()
 			body := []byte(fmt.Sprintf(`{
 				"model":"gpt-5.6-sol"%s,
-				"input":[
-					{"type":"custom_tool_call","id":"old_custom","call_id":"old_custom_call","name":"apply_patch","input":"*** Begin Patch"},
-					{"type":"custom_tool_call_output","call_id":"old_custom_call","output":{"ok":true}},
-					{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
-				]
-			}`, tt.toolsJSON))
+					"input":[
+						{"type":"custom_tool_call","id":"old_custom","call_id":"old_custom_call","name":"apply_patch","input":"*** Begin Patch"},
+						{"type":"custom_tool_call_output","call_id":"old_custom_call","output":{"ok":true}},
+						{"type":"tool_search_call","id":"old_search","call_id":"old_search_call","arguments":{"query":"github"},"execution":"client"},
+						{"type":"tool_search_output","call_id":"old_search_call","output":{"groups":["github"]}},
+						{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
+					]
+				}`, tt.toolsJSON))
 
 			patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
 			require.NoError(t, err)
@@ -99,7 +101,13 @@ func TestPatchGrokResponsesBodyWithClientToolsLowersHistoryWithoutTools(t *testi
 			require.False(t, gjson.GetBytes(patched, "input.0.input").Exists())
 			require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.1.type").String())
 			require.JSONEq(t, `{"ok":true}`, gjson.GetBytes(patched, "input.1.output").String())
-			require.Equal(t, "continue", gjson.GetBytes(patched, "input.2.content.0.text").String())
+			require.Equal(t, "function_call", gjson.GetBytes(patched, "input.2.type").String())
+			require.Equal(t, "tool_search", gjson.GetBytes(patched, "input.2.name").String())
+			require.JSONEq(t, `{"query":"github"}`, gjson.GetBytes(patched, "input.2.arguments").String())
+			require.False(t, gjson.GetBytes(patched, "input.2.execution").Exists())
+			require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.3.type").String())
+			require.JSONEq(t, `{"groups":["github"]}`, gjson.GetBytes(patched, "input.3.output").String())
+			require.Equal(t, "continue", gjson.GetBytes(patched, "input.4.content.0.text").String())
 		})
 	}
 }
@@ -149,8 +157,9 @@ func TestAdaptGrokResponsesClientToolsFillsMissingFunctionCallOutput(t *testing.
 		"tools":[],
 		"input":[
 			{"type":"function_call","call_id":"native_call","name":"native_tool","arguments":"{}"},
-			{"type":"function_call_output","call_id":"native_call"},
-			{"type":"custom_tool_call_output","call_id":"custom_call"}
+			{"type":"function_call_output","call_id":"native_call","item_reference":"drop-me"},
+			{"type":"custom_tool_call_output","call_id":"custom_call","output":null},
+			{"type":"tool_search_output","call_id":"search_call","output":["one",{"ok":true}],"execution":"client"}
 		]
 	}`)
 
@@ -162,9 +171,53 @@ func TestAdaptGrokResponsesClientToolsFillsMissingFunctionCallOutput(t *testing.
 	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.1.type").String())
 	require.True(t, gjson.GetBytes(patched, "input.1.output").Exists())
 	require.Empty(t, gjson.GetBytes(patched, "input.1.output").String())
+	require.False(t, gjson.GetBytes(patched, "input.1.item_reference").Exists())
 	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.2.type").String())
 	require.True(t, gjson.GetBytes(patched, "input.2.output").Exists())
 	require.Empty(t, gjson.GetBytes(patched, "input.2.output").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.3.type").String())
+	require.JSONEq(t, `["one",{"ok":true}]`, gjson.GetBytes(patched, "input.3.output").String())
+	require.False(t, gjson.GetBytes(patched, "input.3.execution").Exists())
+}
+
+func TestAdaptGrokResponsesClientToolsOnlyNormalizesDirectInputItems(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"tools":[],
+		"input":[
+			{
+				"type":"message",
+				"role":"user",
+				"content":[{
+					"type":"input_text",
+					"text":"keep nested protocol-shaped data",
+					"metadata":{"type":"tool_search_call","execution":"client","arguments":{"query":"nested"}}
+				}]
+			},
+			{
+				"type":"custom_tool_call",
+				"id":"call_item",
+				"call_id":"call_direct",
+				"name":"apply_patch",
+				"input":"patch",
+				"execution":"client",
+				"item_reference":"drop-me"
+			}
+		]
+	}`)
+
+	patched, _, err := adaptGrokResponsesClientTools(body)
+	require.NoError(t, err)
+	require.Equal(t, "tool_search_call", gjson.GetBytes(patched, "input.0.content.0.metadata.type").String())
+	require.Equal(t, "client", gjson.GetBytes(patched, "input.0.content.0.metadata.execution").String())
+	require.Equal(t, "function_call", gjson.GetBytes(patched, "input.1.type").String())
+	require.Equal(t, "call_item", gjson.GetBytes(patched, "input.1.id").String())
+	require.Equal(t, "call_direct", gjson.GetBytes(patched, "input.1.call_id").String())
+	require.Equal(t, "apply_patch", gjson.GetBytes(patched, "input.1.name").String())
+	require.JSONEq(t, `{"input":"patch"}`, gjson.GetBytes(patched, "input.1.arguments").String())
+	require.False(t, gjson.GetBytes(patched, "input.1.execution").Exists())
+	require.False(t, gjson.GetBytes(patched, "input.1.item_reference").Exists())
 }
 
 func TestPatchGrokResponsesBodyWithClientToolsRewritesEveryToolChoice(t *testing.T) {

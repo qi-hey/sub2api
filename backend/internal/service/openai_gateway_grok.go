@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,6 +19,10 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
+
+func isGrokCompactRequest(c *gin.Context) bool {
+	return isOpenAIResponsesCompactPath(c) || isOpenAINativeCompactionV2(c)
+}
 
 const (
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
@@ -68,11 +73,20 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	// OpenAI /responses/compact is not a native xAI endpoint. Convert it into a
 	// normal Grok Responses turn that asks for a structured summary, then map the
 	// reply back to an OpenAI compaction item on the way out.
-	if isOpenAIResponsesCompactPath(c) {
+	grokCompact := isGrokCompactRequest(c)
+	if grokCompact {
 		patchedBody, err = buildGrokCompactRequestBody(patchedBody)
 		if err != nil {
 			return nil, err
 		}
+	}
+	patchedBody, err = s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, patchedBody)
+	if err != nil {
+		var blocked *OpenAIFastBlockedError
+		if errors.As(err, &blocked) {
+			writeOpenAIFastPolicyBlockedResponse(c, blocked)
+		}
+		return nil, err
 	}
 	// Derive the identity from the request xAI will actually see. This makes
 	// Codex Responses Lite additional_tools part of the stable tool prefix.
@@ -211,7 +225,8 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	searchCount := 0
 	imageCount := 0
 	var imageOutputSizes []string
-	if reqStream {
+	upstreamStream := reqStream && !grokCompact
+	if upstreamStream {
 		maxLineSize := defaultMaxLineSize
 		if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 			maxLineSize = s.cfg.Gateway.MaxLineSize

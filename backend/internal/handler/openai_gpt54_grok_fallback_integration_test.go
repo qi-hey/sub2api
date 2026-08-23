@@ -493,3 +493,19 @@ func (c *gpt54GrokFirstGatewayCache) DeleteSessionAccountID(_ context.Context, g
 	delete(c.bindings, gpt54GrokFirstGatewayCacheKey{groupID: groupID, session: session})
 	return nil
 }
+
+func (c *gpt54GrokFirstGatewayCache) SetGrokVideoPendingBilling(context.Context, string, []byte, time.Duration) error {
+	return nil
+}
+
+func (c *gpt54GrokFirstGatewayCache) GetGrokVideoPendingBilling(context.Context, string) ([]byte, error) {
+	return nil, nil
+}
+
+func (c *gpt54GrokFirstGatewayCache) ClaimGrokVideoBilled(context.Context, string, time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (c *gpt54GrokFirstGatewayCache) ReleaseGrokVideoBilled(context.Context, string) error {
+	return nil
+}
