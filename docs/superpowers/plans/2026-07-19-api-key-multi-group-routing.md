@@ -625,8 +625,8 @@ Add entries for:
 - Grok account default mappings
 - automatic compatible Grok group selection
 
-Keep the existing privacy filter, Any Router passthrough, account test, OpenAI
-defaults, and compatible-group defaults documented as retained.
+Keep the existing privacy filter, generic API-key relay passthrough, account
+test, OpenAI defaults, and compatible-group defaults documented as retained.
 
 - [ ] **Step 2: Run backend formatting and full tests**
 
