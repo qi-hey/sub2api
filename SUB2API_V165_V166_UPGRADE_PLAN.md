@@ -74,7 +74,7 @@ bulk.
 5. Reapply downstream changes by feature, not by file, in this order:
    privacy filter; account defaults; multi-group keys; deterministic routing;
    OpenAI-to-Grok fallback; Grok protocol/history compatibility; Grok account
-   safety and maintenance; Any Router passthrough; SSO maintenance; remaining
+   safety and maintenance; generic API-key relay passthrough; SSO maintenance; remaining
    UI and operations customizations.
 6. Generate a custom version such as `0.1.166-r1`. Increment the downstream
    revision for every production redeploy of the same upstream tag.
@@ -96,12 +96,12 @@ Required behavior:
 - existing array input remains unchanged;
 - unsupported internal fields and compact-specific cleanup still run;
 - normalization applies only to the OAuth passthrough request path that needs
-  it and does not rewrite ordinary pool-mode Any Router payloads incorrectly.
+  it and does not rewrite ordinary API-key relay payloads incorrectly.
 
 Required tests:
 
 - string, empty string, object, array, missing input, compact and non-compact;
-- Any Router `extra.openai_passthrough` stream and non-stream bridges;
+- generic `extra.openai_passthrough` stream and non-stream relay bridges;
 - a real `/v1/responses` smoke request through an official OpenAI account.
 
 ### OpenAI stream proxy quarantine
@@ -212,7 +212,7 @@ Targeted regression suites must explicitly cover:
 
 - embedded privacy filtering;
 - OpenAI defaults and fallback mappings;
-- Any Router passthrough, stream forcing, and account testing;
+- generic API-key relay passthrough and account testing;
 - multi-group API key authorization and request-local selection;
 - all four OpenAI-to-Grok fallback ingress paths;
 - conversation ownership and tool history compatibility;
@@ -240,7 +240,7 @@ with one controlled restart and test in this order:
 8. A long tool-history request succeeds on its owning provider without losing
    call/result pairs.
 9. Grok account concurrency never exceeds two.
-10. Any Router stream and non-stream requests retain their expected behavior.
+10. Generic API-key relay stream and non-stream requests retain their expected behavior.
 
 The controlled fallback test must use reversible temporary scheduling state.
 It must not delete accounts, edit credentials, change API keys, or alter CC
@@ -264,7 +264,7 @@ Immediately roll back when any of these occurs:
 - usage/billing is attributed to the wrong group or upstream model;
 - service restart loop, panic, migration failure, or public health failure;
 - Grok concurrency exceeds two;
-- privacy filtering or Any Router passthrough regresses.
+- privacy filtering or generic API-key relay passthrough regresses.
 
 After deployment, write a new `build-artifacts/v16x-*.txt` record containing
 source commit, upstream tag, feature list, test results, binary/archive SHA256,

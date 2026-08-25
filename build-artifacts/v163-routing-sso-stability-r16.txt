@@ -51,9 +51,3 @@ deployment:
 - public_health=https://sub.hey77.uk/health HTTP 200
 - post_deploy_panic_count=0
 - post_deploy_fatal_count=0
-
-production_config_followup:
-- Restored account 43 anthropic-beta=context-1m-2025-08-07 after Any Router began requiring 1M context.
-- account_43_backup=/opt/sub2api/backups/account43-before-r16-1m-beta-20260724T173237Z.json
-- Account 43 no longer receives the local missing-1M-beta rejection.
-- Any Router itself continued returning HTTP 503 for Claude models after accepting the beta header; this is an external upstream outage, not an R16 process or routing failure.

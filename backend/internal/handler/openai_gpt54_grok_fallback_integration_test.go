@@ -509,3 +509,11 @@ func (c *gpt54GrokFirstGatewayCache) ClaimGrokVideoBilled(context.Context, strin
 func (c *gpt54GrokFirstGatewayCache) ReleaseGrokVideoBilled(context.Context, string) error {
 	return nil
 }
+
+func (c *gpt54GrokFirstGatewayCache) GetReasoningContent(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (c *gpt54GrokFirstGatewayCache) SetReasoningContent(context.Context, string, string, time.Duration) error {
+	return nil
+}

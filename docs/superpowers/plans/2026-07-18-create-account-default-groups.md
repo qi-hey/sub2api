@@ -40,7 +40,7 @@
 
 - [ ] Run `pnpm.cmd run test:run`.
 - [ ] Run `pnpm.cmd run build`.
-- [ ] Build the embedded Linux binary with version `0.1.158-custom-anyrouter`.
+- [ ] Build the embedded Linux binary with the current custom version.
 - [ ] Push the custom branch, main, and refreshed custom tag.
 - [ ] Back up the VPS database, environment, service unit, and binary.
 - [ ] Deploy with one service restart and verify health, version, checksum, and existing account scheduling configuration.

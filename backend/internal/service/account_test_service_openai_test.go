@@ -165,57 +165,6 @@ func TestAccountTestService_OpenAIOAuthTestNormalizesGPT56Alias(t *testing.T) {
 	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(body, "model").String())
 }
 
-func TestAccountTestService_OpenAIAPIKeyAnyRouterUsesCodexProbeShape(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctx, _ := newTestContext()
-
-	resp := newJSONResponse(http.StatusOK, "")
-	resp.Body = io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\"}\n\n"))
-
-	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
-	svc := &AccountTestService{
-		httpUpstream: upstream,
-		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
-	}
-	account := &Account{
-		ID:          12,
-		Name:        "Any Router",
-		Platform:    PlatformOpenAI,
-		Type:        AccountTypeAPIKey,
-		Concurrency: 1,
-		Credentials: map[string]any{
-			"api_key":   "sk-test",
-			"base_url":  "https://anyrouter.top/v1",
-			"pool_mode": true,
-			"model_mapping": map[string]any{
-				"gpt-5.4": "gpt-5.5",
-			},
-		},
-		Extra: map[string]any{
-			"openai_passthrough":         true,
-			"openai_responses_supported": true,
-		},
-	}
-
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
-	require.NoError(t, err)
-	require.Len(t, upstream.requests, 1)
-
-	req := upstream.requests[0]
-	body, err := io.ReadAll(req.Body)
-	require.NoError(t, err)
-	require.Equal(t, "https://anyrouter.top/v1/responses", req.URL.String())
-	require.Equal(t, "gpt-5.5", gjson.GetBytes(body, "model").String())
-	require.NotEmpty(t, gjson.GetBytes(body, "instructions").String())
-	require.NotEmpty(t, gjson.GetBytes(body, "prompt_cache_key").String())
-	require.Equal(t, "reasoning.encrypted_content", gjson.GetBytes(body, "include.0").String())
-	require.Equal(t, "text/event-stream", req.Header.Get("Accept"))
-	require.Equal(t, "codex_cli_rs", req.Header.Get("Originator"))
-	require.NotEmpty(t, req.Header.Get("Version"))
-	require.Equal(t, "responses=experimental", req.Header.Get("OpenAI-Beta"))
-	require.Contains(t, strings.ToLower(req.Header.Get("User-Agent")), "codex")
-}
-
 func TestAccountTestService_OpenAIShadowUsesParentCredentialsAndShadowModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()
@@ -297,6 +246,113 @@ func TestAccountTestService_OpenAIStreamEOFBeforeCompletedFails(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, recorder.Body.String(), "response.completed")
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
+}
+
+func TestAccountTestService_DeepSeekCustomBaseURLUsesV1ResponsesPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformDeepseek,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":      "sk-test",
+			"base_url":     "https://relay.example.com/v1",
+			"api_protocol": APIProtocolResponses,
+		},
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: true,
+		},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://relay.example.com/v1/responses", upstream.requests[0].URL.String())
+}
+
+func TestAccountTestService_DeepSeekResponsesRoutesToOpenAIProbe(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          93,
+		Platform:    PlatformDeepseek,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":      "sk-test",
+			"base_url":     "https://relay.example.com/v1",
+			"api_protocol": APIProtocolResponses,
+		},
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: true,
+		},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{93: account},
+		},
+	}
+	svc.accountRepo = repo
+
+	err := svc.TestAccountConnection(ctx, account.ID, "gpt-5.4", "", "")
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://relay.example.com/v1/responses", upstream.requests[0].URL.String())
+}
+
+func TestAccountTestService_DeepSeekDefaultBaseURLUsesNativeResponsesPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          92,
+		Platform:    PlatformDeepseek,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":      "sk-test",
+			"api_protocol": APIProtocolResponses,
+		},
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: true,
+		},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://api.deepseek.com/responses", upstream.requests[0].URL.String())
 }
 
 func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testing.T) {

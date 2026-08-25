@@ -16,6 +16,9 @@
         <nav class="nav-links" :aria-label="t('home.dynamic.mainNavigation')">
           <a href="#routing-core">{{ t('home.dynamic.capabilities') }}</a>
           <a href="#connected-models">{{ t('home.dynamic.models') }}</a>
+          <router-link v-if="showModelPlazaEntry" to="/model-plaza">
+            {{ t('nav.modelPlaza') }}
+          </router-link>
           <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">
             {{ t('home.docs') }}
           </a>
@@ -90,6 +93,7 @@ const props = defineProps<{
   siteLogo: string
   siteSubtitle: string
   docUrl: string
+  showModelPlazaEntry: boolean
   isAuthenticated: boolean
   dashboardPath: string
   isDark: boolean
