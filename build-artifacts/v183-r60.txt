@@ -1,0 +1,59 @@
+version=0.1.183-r60
+source_commit=100fa095385e3dc0dbedfc3f7071cff7cae73737
+source_tag=custom-v0.1.183-r60
+upstream_tag=v0.1.183
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+size_bytes=125026464
+sha256=da2ea8298ac1cac55129c8a902c25bcb393ee6ea44a00a4b0ce7ea082ef2ff10
+
+upstream_changes:
+- v0.1.182 normalizes Responses Lite across OAuth, API-key, HTTP, and WebSocket paths.
+- v0.1.182 preserves OAuth image prompts, fixes Anthropic cache billing, payment balance refresh, Antigravity routing, and composite channel-monitor attribution.
+- v0.1.183 adds reset-aware OpenAI OAuth quota 429 scheduling and recoverable Kimi concurrency 403 handling.
+- v0.1.183 honors Codex session-id affinity, preserves restored custom-tool item ID types, protects persistent sticky bindings on capacity spillover, and clamps Antigravity compatible output to 64000 tokens.
+- No database migration was added between upstream v0.1.181 and v0.1.183.
+
+downstream_preserved:
+- Embedded PrivacyFilter on gateway request bodies.
+- OpenAI, Grok, and Claude multi-group API-key routing.
+- OpenAI-first fallback to the same key's uniquely bound Grok group.
+- Generic OpenAI-compatible API-key passthrough, including stream/non-stream conversion and Codex compatibility.
+- Grok account defaults, mappings, group assignment, maximum concurrency 2, and 402/403 scheduling maintenance.
+- OpenAI OAuth session fingerprint convergence defaults and lifecycle.
+- Account group proxy binding, Forbidden filtering and protected bulk deletion.
+- Long-context pricing, fast policy, model plaza, available channels, channel monitor, security audit, game center, loyalty, per-game pools, gifts, and reward vouchers.
+- Any Router-specific accounts, routing, allowlist, code, and documentation remain removed.
+
+verification:
+- git diff --check passed.
+- go test ./... -count=1 passed.
+- go vet ./... passed.
+- Frontend full suite passed: 262 files, 1873 tests.
+- pnpm typecheck passed.
+- pnpm lint:check passed.
+- pnpm build passed and generated the embedded production frontend.
+- Linux/amd64 embedded binary self-check reported 0.1.183-r60 and source commit 100fa0953.
+- Uploaded and deployed binary SHA256 matched the local build.
+- systemd reported active with NRestarts=0.
+- Local health, public health, public settings, and embedded frontend returned HTTP 200.
+- Multiple production gpt-5.6-sol Responses requests completed with HTTP 200 after deployment.
+- PrivacyFilter continued to redact production Responses requests after deployment.
+- All 6 active groups retained long-context pricing; both OpenAI OAuth accounts retained session/full fingerprint convergence.
+- Production retained 18 users, 1153 accounts, 6 groups, 10 API keys, and 20 multi-group key links.
+- Any Router account count remained zero.
+
+deployment:
+- deployed_at=2026-08-26T19:15:37+08:00
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=da2ea8298ac1cac55129c8a902c25bcb393ee6ea44a00a4b0ce7ea082ef2ff10
+- source_previous_version=0.1.181-r59
+- runtime_replaced_version=0.1.183
+- runtime_replaced_sha256=d77ee118cd93a414b8f2f8bddaf06ddd94b34c19f476af1cda555d25f0cf6831
+- rollback_backup=/opt/sub2api/backups/v183-r60-before-20260826T111414Z
+- database_backup_sha256=8a03eac82c48bce0b32e13b0a2d94cd540452d87d94ecebbd8ad1098b405de21
+- service_state=active/running
+- local_health=http://127.0.0.1:8080/health HTTP 200
+- public_health=https://sub.hey77.uk/health HTTP 200
