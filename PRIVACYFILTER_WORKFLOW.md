@@ -5,13 +5,23 @@ that must survive every upstream update.
 
 ## Current downstream release
 
-The current downstream base is upstream `v0.1.165`, released as
-`0.1.165-r20`. The upgrade retained the three fixes introduced in upstream
-`v0.1.164`:
+The current downstream base is upstream `v0.1.183`, released as
+`0.1.183-r60`. The upgrade retains all required downstream customizations in
+this document and the upstream fixes accumulated through `v0.1.182` and
+`v0.1.183`, including:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
 - OpenAI incomplete-stream proxy quarantine (`47ad29db3`);
 - Grok HTTP 402 scheduling exclusion (`ca0d3314c`).
+- Responses Lite normalization across OAuth, API-key, HTTP, and WebSocket paths;
+- OpenAI quota-exhaustion 429 scheduling with reset-aware recovery;
+- Codex `session-id` affinity without persistent-binding spillover;
+- restored Responses custom-tool item ID type preservation;
+- Kimi concurrency 403 temporary cooldown and failover;
+- OpenAI image prompt preservation, Anthropic cache billing correction, and
+  channel-monitor composite attribution fixes.
+
+No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
 For Grok 402, retain the downstream deterministic `schedulable=false` policy;
 do not regress to upstream's temporary cooldown-only behavior. Upstream
@@ -343,8 +353,8 @@ Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.
 - `privacyfilter-v137`: the original privacyfilter patch extracted from the VPS build.
-- `main`: current deployable branch.
-- `deploy`: alias branch for the current deployable branch.
+- `custom/v183-r60`: current deployable downstream branch.
+- `custom-v0.1.183-r60`: immutable source tag for the current downstream release.
 
 Update to a new upstream tag:
 
