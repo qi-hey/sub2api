@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.1.183`, released as
-`0.1.183-r62`. The upgrade retains all required downstream customizations in
+`0.1.183-r63`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.1.182` and
 `v0.1.183`, including:
 
@@ -28,6 +28,10 @@ this document and the upstream fixes accumulated through `v0.1.182` and
   `$ref`/`$defs` branches before forwarding. This covers Codex Desktop schemas
   whose root unions reference nested object unions while preserving primitive
   nullable definitions used only by object properties.
+- Referenced object unions nested directly inside another root union are
+  flattened into direct object variants. xAI accepts those variants but rejects
+  a root branch that is itself another `oneOf`/`anyOf`, even when every nested
+  variant is an object.
 
 No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
@@ -361,8 +365,8 @@ Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.
 - `privacyfilter-v137`: the original privacyfilter patch extracted from the VPS build.
-- `custom/v183-r62`: current deployable downstream branch.
-- `custom-v0.1.183-r62`: immutable source tag for the current downstream release.
+- `custom/v183-r63`: current deployable downstream branch.
+- `custom-v0.1.183-r63`: immutable source tag for the current downstream release.
 
 Update to a new upstream tag:
 

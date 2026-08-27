@@ -114,7 +114,7 @@ func normalizeGrokObjectSchemaWithDocument(
 
 		objectBranches := make([]any, 0, len(branches))
 		for _, branch := range branches {
-			normalized, branchChanged, compatible := normalizeGrokObjectSchemaBranch(
+			normalized, branchChanged, compatible := normalizeGrokObjectSchemaBranches(
 				branch,
 				document,
 				depth+1,
@@ -127,7 +127,10 @@ func normalizeGrokObjectSchemaWithDocument(
 			if branchChanged {
 				changed = true
 			}
-			objectBranches = append(objectBranches, normalized)
+			if len(normalized) != 1 {
+				changed = true
+			}
+			objectBranches = append(objectBranches, normalized...)
 		}
 		if len(objectBranches) == 0 {
 			return changed, false
@@ -166,24 +169,49 @@ func normalizeGrokObjectSchemaWithDocument(
 	return changed, true
 }
 
-func normalizeGrokObjectSchemaBranch(
+func normalizeGrokObjectSchemaBranches(
 	branch any,
 	document map[string]any,
 	depth int,
 	resolvingRefs map[string]bool,
-) (any, bool, bool) {
+) ([]any, bool, bool) {
 	switch typed := branch.(type) {
 	case bool:
 		if !typed {
 			return nil, false, false
 		}
-		return emptyGrokObjectSchema(), true, true
+		return []any{emptyGrokObjectSchema()}, true, true
 	case map[string]any:
 		changed, supported := normalizeGrokObjectSchemaWithDocument(typed, document, depth, resolvingRefs)
-		return typed, changed, supported
+		if !supported {
+			return nil, changed, false
+		}
+		if flattened, ok := flattenGrokNestedObjectUnion(typed); ok {
+			return flattened, true, true
+		}
+		return []any{typed}, changed, true
 	default:
 		return nil, false, false
 	}
+}
+
+func flattenGrokNestedObjectUnion(schema map[string]any) ([]any, bool) {
+	schemaType, ok := schema["type"].(string)
+	if len(schema) != 2 || !ok || strings.TrimSpace(schemaType) != "object" {
+		return nil, false
+	}
+	for _, keyword := range []string{"oneOf", "anyOf"} {
+		raw, exists := schema[keyword]
+		if !exists {
+			continue
+		}
+		branches, ok := raw.([]any)
+		if !ok || len(branches) == 0 {
+			return nil, false
+		}
+		return branches, true
+	}
+	return nil, false
 }
 
 func resolveGrokLocalSchemaRef(document map[string]any, ref string) (map[string]any, bool) {
