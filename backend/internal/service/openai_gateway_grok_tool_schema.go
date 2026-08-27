@@ -54,11 +54,52 @@ func normalizeGrokFunctionToolSchema(raw json.RawMessage) ([]byte, bool, bool, e
 }
 
 func normalizeGrokObjectSchema(schema map[string]any, depth int) (bool, bool) {
+	return normalizeGrokObjectSchemaWithDocument(schema, schema, depth, make(map[string]bool))
+}
+
+func normalizeGrokObjectSchemaWithDocument(
+	schema map[string]any,
+	document map[string]any,
+	depth int,
+	resolvingRefs map[string]bool,
+) (bool, bool) {
 	if schema == nil || depth > openAIResponsesObjectUnionMaxDepth {
 		return false, false
 	}
 
 	changed := false
+	if rawRef, exists := schema["$ref"]; exists {
+		ref, ok := rawRef.(string)
+		if !ok || resolvingRefs[ref] {
+			return false, false
+		}
+		target, ok := resolveGrokLocalSchemaRef(document, ref)
+		if !ok {
+			return false, false
+		}
+		resolvingRefs[ref] = true
+		targetChanged, supported := normalizeGrokObjectSchemaWithDocument(target, document, depth+1, resolvingRefs)
+		delete(resolvingRefs, ref)
+		if !supported {
+			return targetChanged, false
+		}
+
+		inlined := make(map[string]any, len(target)+len(schema))
+		for key, value := range target {
+			inlined[key] = value
+		}
+		for key, value := range schema {
+			if key != "$ref" {
+				inlined[key] = value
+			}
+		}
+		clear(schema)
+		for key, value := range inlined {
+			schema[key] = value
+		}
+		changed = true
+	}
+
 	unionSeen := false
 	for _, keyword := range []string{"oneOf", "anyOf"} {
 		value, exists := schema[keyword]
@@ -73,7 +114,12 @@ func normalizeGrokObjectSchema(schema map[string]any, depth int) (bool, bool) {
 
 		objectBranches := make([]any, 0, len(branches))
 		for _, branch := range branches {
-			normalized, branchChanged, compatible := normalizeGrokObjectSchemaBranch(branch, depth+1)
+			normalized, branchChanged, compatible := normalizeGrokObjectSchemaBranch(
+				branch,
+				document,
+				depth+1,
+				resolvingRefs,
+			)
 			if !compatible {
 				changed = true
 				continue
@@ -120,7 +166,12 @@ func normalizeGrokObjectSchema(schema map[string]any, depth int) (bool, bool) {
 	return changed, true
 }
 
-func normalizeGrokObjectSchemaBranch(branch any, depth int) (any, bool, bool) {
+func normalizeGrokObjectSchemaBranch(
+	branch any,
+	document map[string]any,
+	depth int,
+	resolvingRefs map[string]bool,
+) (any, bool, bool) {
 	switch typed := branch.(type) {
 	case bool:
 		if !typed {
@@ -128,11 +179,31 @@ func normalizeGrokObjectSchemaBranch(branch any, depth int) (any, bool, bool) {
 		}
 		return emptyGrokObjectSchema(), true, true
 	case map[string]any:
-		changed, supported := normalizeGrokObjectSchema(typed, depth)
+		changed, supported := normalizeGrokObjectSchemaWithDocument(typed, document, depth, resolvingRefs)
 		return typed, changed, supported
 	default:
 		return nil, false, false
 	}
+}
+
+func resolveGrokLocalSchemaRef(document map[string]any, ref string) (map[string]any, bool) {
+	if document == nil || !strings.HasPrefix(ref, "#/") {
+		return nil, false
+	}
+	var current any = document
+	for _, rawToken := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
+		token := strings.ReplaceAll(strings.ReplaceAll(rawToken, "~1", "/"), "~0", "~")
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current, ok = object[token]
+		if !ok {
+			return nil, false
+		}
+	}
+	resolved, ok := current.(map[string]any)
+	return resolved, ok
 }
 
 func grokSchemaTypeArrayContainsObject(types []any) bool {
