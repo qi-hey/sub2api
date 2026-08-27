@@ -1,0 +1,62 @@
+version=0.1.183-r63
+source_commit=337acfc4f17cd034174b925b056f7ebff19b1358
+source_tag=custom-v0.1.183-r63
+upstream_tag=v0.1.183
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+size_bytes=125034656
+sha256=a75a9266b283549c2f4855e47f314eb35b6ad63e51e11d45c7a6eba7c3fa475f
+
+fix:
+- Grok function-tool object-root normalization resolves reachable local
+  $ref/$defs branches before forwarding.
+- A referenced branch whose resolved schema is another object oneOf/anyOf is
+  flattened into direct object variants in the parent root union.
+- Primitive nullable definitions used by object properties remain unchanged.
+- The change remains Grok-only and does not alter OpenAI, model mapping,
+  conversation history, or client-tool response restoration.
+
+regression:
+- r61 covered inline mixed unions but not Codex Desktop's referenced schema.
+- r62 expanded local references, but xAI still rejected a root union branch
+  that was itself a nested object union.
+- r63 reproduces the current Codex app automation_update schema shape:
+  top-level $ref branches, nested create/update unions, and nullable property
+  definitions.
+- Unit assertions require six direct object variants after normalization and
+  ensure no direct root branch retains $ref, oneOf, or anyOf.
+
+verification:
+- Targeted Grok tool-schema regression tests passed.
+- go test ./internal/service -count=1 passed.
+- go test ./... -count=1 passed.
+- go vet ./... passed.
+- Frontend full suite passed: 262 files, 1873 tests.
+- Linux/amd64 embedded binary self-check reported 0.1.183-r63.
+- Uploaded and deployed binary SHA256 matched the local build.
+- Exact live Codex Desktop automation_update tools/list schema returned HTTP
+  200 with model grok-4.6-build and text OK.
+- The same exact schema with streaming enabled returned HTTP 200,
+  response.completed, and text STREAM_OK.
+- A GPT-5.6 Sol control request returned HTTP 200 and text OPENAI_OK.
+- Current service PID recorded two successful Grok-4.6 requests and zero
+  invalid_client_tool_schema errors.
+- systemd reported active with NRestarts=0.
+- Local and public health returned HTTP 200.
+
+deployment:
+- deployed_at_utc=2026-08-27T20:51:13Z
+- deployed_at_asia_shanghai=2026-08-28T04:51:13+08:00
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=a75a9266b283549c2f4855e47f314eb35b6ad63e51e11d45c7a6eba7c3fa475f
+- previous_version=0.1.183-r62
+- previous_sha256=780cd88790e0eabdd929e81f419f1dea12b7230525bef9596712b7c348118d48
+- rollback_backup=/opt/sub2api/backups/v183-r63-before-20260827T205050Z
+- database_snapshot=/opt/sub2api/backups/v183-r62-before-20260827T203606Z/sub2api.dump
+- database_snapshot_sha256=cf38bb06f8951b74e6159f3b67eb4c1db89cee172e76e9bdc10c155f2e8149f1
+- service_state=active/running
+- local_health=http://127.0.0.1:8080/health HTTP 200
+- public_health=https://sub.hey77.uk/health HTTP 200
+
