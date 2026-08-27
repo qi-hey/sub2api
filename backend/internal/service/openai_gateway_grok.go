@@ -1107,18 +1107,19 @@ func sanitizeGrokResponsesTools(body []byte) ([]byte, error) {
 		toolType := strings.TrimSpace(tool.Get("type").String())
 		if _, ok := grokResponsesSupportedToolTypes[toolType]; ok {
 			raw := json.RawMessage(tool.Raw)
-			if toolType == "function" && (!tool.Get("parameters").Exists() || tool.Get("parameters").Type == gjson.Null) {
-				var payload map[string]any
-				if err := decodeOpenAIJSONUseNumber(raw, &payload); err != nil {
-					return nil, err
+			if toolType == "function" {
+				normalized, changed, supported, normalizeErr := normalizeGrokFunctionToolSchema(raw)
+				if normalizeErr != nil {
+					return nil, normalizeErr
 				}
-				payload["parameters"] = map[string]any{"type": "object", "properties": map[string]any{}}
-				encoded, err := marshalOpenAIUpstreamJSON(payload)
-				if err != nil {
-					return nil, err
+				if !supported {
+					toolsChanged = true
+					continue
 				}
-				raw = encoded
-				toolsChanged = true
+				if changed {
+					raw = normalized
+					toolsChanged = true
+				}
 			}
 			filteredTools = append(filteredTools, raw)
 		}

@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.1.183`, released as
-`0.1.183-r60`. The upgrade retains all required downstream customizations in
+`0.1.183-r61`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.1.182` and
 `v0.1.183`, including:
 
@@ -20,6 +20,10 @@ this document and the upstream fixes accumulated through `v0.1.182` and
 - Kimi concurrency 403 temporary cooldown and failover;
 - OpenAI image prompt preservation, Anthropic cache billing correction, and
   channel-monitor composite attribution fixes.
+- Grok Responses function-tool schemas normalize mixed `oneOf`/`anyOf` roots
+  to object-only variants; only a tool with no callable object variant is
+  removed, so newer Codex `automation_update` schemas cannot reject the whole
+  request before sampling.
 
 No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
@@ -353,8 +357,8 @@ Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.
 - `privacyfilter-v137`: the original privacyfilter patch extracted from the VPS build.
-- `custom/v183-r60`: current deployable downstream branch.
-- `custom-v0.1.183-r60`: immutable source tag for the current downstream release.
+- `custom/v183-r61`: current deployable downstream branch.
+- `custom-v0.1.183-r61`: immutable source tag for the current downstream release.
 
 Update to a new upstream tag:
 
