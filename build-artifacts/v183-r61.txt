@@ -1,0 +1,48 @@
+version=0.1.183-r61
+source_commit=2524a49b427477dd4c9fc4ec27edee7cf2df1ad8
+source_tag=custom-v0.1.183-r61
+upstream_tag=v0.1.183
+target=linux/amd64
+go_version=go1.26.5
+build_tags=embed
+build_type=release
+size_bytes=125026464
+sha256=547224f1e82a16d6218903299453983eb8f5bd95cd05c5487222482d27e64aea
+
+fix:
+- Grok Responses function tools now normalize mixed oneOf/anyOf parameter roots.
+- Primitive and null root branches are removed while callable object variants remain.
+- Object variants without an explicit root type receive type=object.
+- If no callable object variant exists, only that incompatible tool is removed.
+- A removed tool's explicit tool_choice is also removed; unrelated tools remain available.
+- The change is Grok-only and does not alter OpenAI, Anthropic, CN-provider, model mapping, or conversation-history behavior.
+
+regression:
+- Reproduced the Codex Desktop 0.150.0-alpha.8 automation_update schema that caused xAI invalid_client_tool_schema.
+- Added a namespace-flattening regression test for mcp__codex_app__automation_update.
+- Added tests for primitive-only removal, nullable object type arrays, valid-schema byte preservation, and tool_choice cleanup.
+
+verification:
+- go test ./... -count=1 passed.
+- go vet ./... passed.
+- Frontend production build passed.
+- Frontend full suite passed: 262 files, 1873 tests.
+- Linux/amd64 embedded binary self-check reported 0.1.183-r61.
+- Uploaded and deployed binary SHA256 matched the local build.
+- Exact live Grok-4.6 request containing the formerly rejected mixed automation_update root schema returned HTTP 200 and text OK.
+- The live request selected Grok group 13 and Grok OAuth account 32090.
+- No invalid_client_tool_schema occurred after deployment.
+- systemd reported active with NRestarts=0.
+- Local and public health returned HTTP 200.
+
+deployment:
+- deployed_at=2026-08-28T02:24:17+08:00
+- deployed_binary=/opt/sub2api/sub2api
+- deployed_sha256=547224f1e82a16d6218903299453983eb8f5bd95cd05c5487222482d27e64aea
+- previous_version=0.1.183-r60
+- previous_sha256=da2ea8298ac1cac55129c8a902c25bcb393ee6ea44a00a4b0ce7ea082ef2ff10
+- rollback_backup=/opt/sub2api/backups/v183-r61-before-20260827T182322Z
+- database_backup_sha256=2d9364004b287af4399e42674a974d1619432000d92faed2adca7600747619d7
+- service_state=active/running
+- local_health=http://127.0.0.1:8080/health HTTP 200
+- public_health=https://sub.hey77.uk/health HTTP 200
