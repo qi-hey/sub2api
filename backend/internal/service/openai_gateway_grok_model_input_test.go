@@ -158,7 +158,7 @@ func TestSanitizeGrokTruncatedReplayBodyDropsPreviousResponseForCompleteToolPair
 	body := []byte(`{
 		"previous_response_id":"resp_stale",
 		"input":[
-			{"type":"reasoning","encrypted_content":"opaque","summary":[{"type":"summary_text","text":"keep summary"}]},
+			{"type":"reasoning","id":"rs_stale","encrypted_content":"opaque","summary":[{"type":"summary_text","text":"keep summary"}]},
 			{"type":"function_call","call_id":"call_1","name":"read","arguments":"{}"},
 			{"type":"function_call_output","call_id":"call_1","output":"ok"}
 		]
@@ -169,8 +169,10 @@ func TestSanitizeGrokTruncatedReplayBodyDropsPreviousResponseForCompleteToolPair
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.False(t, gjson.GetBytes(patched, "previous_response_id").Exists())
-	require.False(t, gjson.GetBytes(patched, "input.0.encrypted_content").Exists())
-	require.Equal(t, "keep summary", gjson.GetBytes(patched, "input.0.summary.0.text").String())
+	require.Equal(t, "message", gjson.GetBytes(patched, "input.0.type").String())
+	require.Contains(t, gjson.GetBytes(patched, "input.0.content.0.text").String(), "keep summary")
+	require.False(t, gjson.GetBytes(patched, `input.#(type=="reasoning")`).Exists())
+	require.NotContains(t, string(patched), "rs_stale")
 	require.Equal(t, "call_1", gjson.GetBytes(patched, "input.1.call_id").String())
 	require.Equal(t, "call_1", gjson.GetBytes(patched, "input.2.call_id").String())
 }
@@ -179,7 +181,7 @@ func TestSanitizeGrokTruncatedReplayBodyKeepsPreviousResponseForUnpairedToolOutp
 	body := []byte(`{
 		"previous_response_id":"resp_required_for_tool_output",
 		"input":[
-			{"type":"reasoning","encrypted_content":"opaque","summary":[{"type":"summary_text","text":"keep summary"}]},
+			{"type":"reasoning","id":"rs_stale","encrypted_content":"opaque","summary":[{"type":"summary_text","text":"keep summary"}]},
 			{"type":"function_call_output","call_id":"call_missing","output":"ok"}
 		]
 	}`)
@@ -189,7 +191,9 @@ func TestSanitizeGrokTruncatedReplayBodyKeepsPreviousResponseForUnpairedToolOutp
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.Equal(t, "resp_required_for_tool_output", gjson.GetBytes(patched, "previous_response_id").String())
-	require.False(t, gjson.GetBytes(patched, "input.0.encrypted_content").Exists())
+	require.Equal(t, "message", gjson.GetBytes(patched, "input.0.type").String())
+	require.Contains(t, gjson.GetBytes(patched, "input.0.content.0.text").String(), "keep summary")
+	require.False(t, gjson.GetBytes(patched, `input.#(type=="reasoning")`).Exists())
 }
 
 func TestGrokStructuredErrorCandidatesDoNotShadowTopLevelMessages(t *testing.T) {

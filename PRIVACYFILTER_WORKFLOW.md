@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.1.183`, released as
-`0.1.183-r67`. The upgrade retains all required downstream customizations in
+`0.1.183-r68`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.1.182` and
 `v0.1.183`, including:
 
@@ -35,9 +35,18 @@ this document and the upstream fixes accumulated through `v0.1.182` and
 
 No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
-### r67 long-session Grok replay fix
+### r68 real Codex reasoning replay fix
 
-Branch `custom/v183-r67` supersedes r66 and was deployed on August 30, 2026.
+Branch `custom/v183-r68` supersedes r67. A synthetic long-session test passed
+on r67, but a real Codex Desktop request still returned 422 because its
+historical reasoning item carried an `rs_*` ID. Removing only encrypted content
+left a stale reasoning shell that xAI's ModelInput decoder rejected.
+
+r68 converts visible reasoning summaries into ordinary conversation-summary
+messages and removes the whole stale reasoning item after history reduction.
+It also records a bounded xAI error-body detail in Ops logs so future 422
+responses identify the exact rejected field without recording request content.
+
 Before r67, r66
 correctly reduced a 2 MB Grok request from about 484,000 to 467,000 estimated
 tokens in roughly one second, but xAI returned 422 because the shortened full
@@ -78,6 +87,10 @@ without importing or replacing it with another fork:
   path from creating a new "No tool call found" failure;
 - ordinary below-budget requests and the existing same-account encrypted
   reasoning retry behavior remain unchanged.
+- real Codex `reasoning` items with stale `rs_*` IDs are removed after their
+  visible summaries have been preserved as ordinary context messages;
+- Grok upstream error events include the configured bounded response-body
+  detail, while request bodies and credentials remain excluded.
 
 For Grok 402, retain the downstream deterministic `schedulable=false` policy;
 do not regress to upstream's temporary cooldown-only behavior. Upstream

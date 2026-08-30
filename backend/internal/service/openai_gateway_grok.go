@@ -191,6 +191,14 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if upstreamMsg == "" {
 			upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
 		}
+		upstreamDetail := ""
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			if maxBytes <= 0 {
+				maxBytes = 2048
+			}
+			upstreamDetail = truncateString(string(respBody), maxBytes)
+		}
 		kind := "http_error"
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			kind = "failover"
@@ -203,6 +211,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
 			Kind:               kind,
 			Message:            upstreamMsg,
+			Detail:             upstreamDetail,
 		})
 		errCtx := withGrokTeamRateLimitModel(ctx, upstreamModel)
 		s.handleGrokAccountUpstreamError(errCtx, account, resp.StatusCode, resp.Header, respBody)
@@ -382,8 +391,14 @@ func sanitizeGrokReplayBody(body []byte, dropSelfContainedPreviousResponse bool)
 	}
 
 	changed := !bytes.Equal(converted, body)
-	if trimOpenAIEncryptedReasoningItems(requestBody) {
-		changed = true
+	if dropSelfContainedPreviousResponse {
+		if replaceGrokReasoningWithVisibleSummaries(requestBody) {
+			changed = true
+		}
+	} else {
+		if trimOpenAIEncryptedReasoningItems(requestBody) {
+			changed = true
+		}
 	}
 	if dropEmptyGrokReplayReasoning(requestBody) {
 		changed = true
@@ -412,6 +427,37 @@ func sanitizeGrokReplayBody(body []byte, dropSelfContainedPreviousResponse bool)
 		return nil, false, err
 	}
 	return retryBody, true, nil
+}
+
+func replaceGrokReasoningWithVisibleSummaries(requestBody map[string]any) bool {
+	items, ok := requestBody["input"].([]any)
+	if !ok {
+		return false
+	}
+	filtered := make([]any, 0, len(items))
+	changed := false
+	for _, rawItem := range items {
+		item, ok := rawItem.(map[string]any)
+		if !ok || strings.TrimSpace(grokStringValue(item["type"])) != "reasoning" {
+			filtered = append(filtered, rawItem)
+			continue
+		}
+		changed = true
+		if summary := compactSummaryText(item["summary"]); summary != "" {
+			filtered = append(filtered, map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []any{map[string]any{
+					"type": "input_text",
+					"text": "<conversation_summary>\n" + summary + "\n</conversation_summary>",
+				}},
+			})
+		}
+	}
+	if changed {
+		requestBody["input"] = filtered
+	}
+	return changed
 }
 
 func dropEmptyGrokReplayReasoning(requestBody map[string]any) bool {
