@@ -72,7 +72,8 @@ const (
 	codexFingerprintDevice codexFingerprintMode = "device"
 	// codexFingerprintSession 收敛 installation_id + session_id，
 	// thread_id 按客户端原始 session-id 确定性派生（每个真实 Codex 会话一个独立线程）。
-	// 上游看到 1 台设备 + 1 会话 + N 线程，最接近正常用户 spawn 子代理的模式。
+	// turn_id 与时间戳保持逐请求新鲜，prompt_cache_key 按真实线程收敛。
+	// 上游看到 1 台设备 + 1 会话 + N 线程，是新账号默认的平衡模式。
 	codexFingerprintSession codexFingerprintMode = "session"
 	// codexFingerprintFull 收敛所有标识：installation_id + session_id + thread_id。
 	// 上游看到 1 台设备 + 1 会话 + 1 线程，最激进。
@@ -516,6 +517,20 @@ func captureCodexFingerprintOriginalBodySessionIDRaw(ids *codexFingerprintIDs, v
 	}
 }
 
+func resolvedCodexFingerprintPromptCacheKey(ids *codexFingerprintIDs) string {
+	if ids == nil {
+		return ""
+	}
+	switch ids.mode {
+	case codexFingerprintSession:
+		return ids.threadID
+	case codexFingerprintFull:
+		return ids.sessionID
+	default:
+		return ""
+	}
+}
+
 func shouldRewriteCodexFingerprintPromptCacheKey(ids *codexFingerprintIDs, promptCacheKey string) bool {
 	if ids == nil || !ids.originalBodySessionIDCaptured || ids.originalBodySessionID == "" || ids.sessionID == "" {
 		return false
@@ -523,7 +538,7 @@ func shouldRewriteCodexFingerprintPromptCacheKey(ids *codexFingerprintIDs, promp
 	if ids.mode != codexFingerprintSession && ids.mode != codexFingerprintFull {
 		return false
 	}
-	return promptCacheKey == ids.originalBodySessionID
+	return resolvedCodexFingerprintPromptCacheKey(ids) != "" && promptCacheKey == ids.originalBodySessionID
 }
 
 func applyCodexFingerprintPromptCacheKey(reqBody map[string]any, ids *codexFingerprintIDs) bool {
@@ -534,10 +549,11 @@ func applyCodexFingerprintPromptCacheKey(reqBody map[string]any, ids *codexFinge
 	if !ok || strings.TrimSpace(promptCacheKey) == "" || !shouldRewriteCodexFingerprintPromptCacheKey(ids, promptCacheKey) {
 		return false
 	}
-	if promptCacheKey == ids.sessionID {
+	target := resolvedCodexFingerprintPromptCacheKey(ids)
+	if target == "" || promptCacheKey == target {
 		return false
 	}
-	reqBody["prompt_cache_key"] = ids.sessionID
+	reqBody["prompt_cache_key"] = target
 	return true
 }
 
@@ -586,7 +602,11 @@ func applyCodexFingerprintClientMetadataRaw(body []byte, ids *codexFingerprintID
 	}
 	promptCacheKey := gjson.GetBytes(body, "prompt_cache_key")
 	if promptCacheKey.Exists() && promptCacheKey.Type == gjson.String && strings.TrimSpace(promptCacheKey.String()) != "" && shouldRewriteCodexFingerprintPromptCacheKey(ids, promptCacheKey.String()) {
-		rewritten, err := sjson.SetBytes(next, "prompt_cache_key", ids.sessionID)
+		target := resolvedCodexFingerprintPromptCacheKey(ids)
+		if target == "" || promptCacheKey.String() == target {
+			return next, modified, nil
+		}
+		rewritten, err := sjson.SetBytes(next, "prompt_cache_key", target)
 		if err != nil {
 			return body, false, fmt.Errorf("splice converged prompt_cache_key: %w", err)
 		}

@@ -358,6 +358,15 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(getCodexFingerprintSelect(wrapper).props('modelValue')).toBe('session')
   })
 
+  it('keeps all existing Codex fingerprint convergence modes', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await flushPromises()
+
+    const options = getCodexFingerprintSelect(wrapper).props('options') as Array<{ value: string }>
+    expect(options.map(option => option.value)).toEqual(['off', 'device', 'session', 'full'])
+  })
+
   it('restores the session fingerprint default when the create dialog is reset', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')

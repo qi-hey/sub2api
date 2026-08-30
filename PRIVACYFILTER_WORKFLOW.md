@@ -35,12 +35,81 @@ this document and the upstream fixes accumulated through `v0.1.182` and
 
 No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
+### Local-only r64 candidate
+
+Branch `custom/v183-r64` is a local-only candidate based on the deployed
+`0.1.183-r63`. It must not be deployed until the owner explicitly schedules a
+post-quota-reset A/B test. The VPS remains on `0.1.183-r63`.
+
+The candidate refines the existing Codex fingerprint convergence feature
+without importing or replacing it with another fork:
+
+- all four stored modes remain available: `off`, `device`, `session`, `full`;
+- `session` is presented as the recommended account-balanced mode;
+- each enabled OpenAI OAuth-like account keeps its own persistent seed;
+- account-balanced mode stabilizes installation/session IDs, derives a stable
+  thread/window per real client session, and keeps turn IDs and timestamps
+  fresh per request;
+- default prompt cache keys are rewritten to the derived thread ID, not one
+  account-global session key; explicit custom cache keys remain untouched;
+- regular HTTP, passthrough, and WebSocket paths continue sharing one computed
+  fingerprint snapshot;
+- legacy `/responses/compact` bodies remain untouched for compatibility, while
+  their outbound headers now use the same account-balanced fingerprint;
+- new OpenAI OAuth and Setup Token accounts default to `session`; existing
+  accounts with no stored mode remain `off`;
+- no migration force-enables existing accounts or removes the administrator's
+  mode selector.
+
 For Grok 402, retain the downstream deterministic `schedulable=false` policy;
 do not regress to upstream's temporary cooldown-only behavior. Upstream
 composite groups are additive and must not replace API-key-bound OpenAI-to-Grok
 runtime fallback.
 
 ## Required downstream customizations
+
+### Codex account-balanced fingerprint convergence
+
+This is a required downstream feature. Preserve the stored
+`codex_fingerprint_mode` contract and the `off`, `device`, `session`, and
+`full` values across future upgrades.
+
+The `session` value is the default balanced policy for newly created OpenAI
+OAuth-like accounts:
+
+- `codex_fingerprint_seed`: one system-managed UUID per account, preserved
+  across edits and disable/re-enable cycles;
+- `installation_id` and `session_id`: stable per account;
+- `thread_id`: deterministically derived from the account seed plus the
+  original client session;
+- `window_id`: derived from that thread;
+- `turn_id`: a fresh UUIDv7 for every request;
+- `turn_started_at_unix_ms`: the real request time;
+- default `prompt_cache_key`: rewritten to the derived thread ID;
+- explicit non-default `prompt_cache_key`: preserved.
+
+Account duplication must mint a new seed. User-supplied seeds must be ignored.
+Missing/invalid modes on new accounts default to `session`, but missing modes
+on existing accounts remain `off`. Enabling a mode through full edit, key-level
+update, or bulk update must create a missing seed atomically.
+
+All HTTP, passthrough, and WebSocket paths must share the same resolved IDs.
+Compact request bodies must not receive normal Responses `client_metadata`
+rewrites, but compact outbound headers must still converge. The UI must retain
+all four options and label `session` as `Account balanced (recommended)` /
+`账号级平衡（推荐）`; `full` remains available but is explicitly experimental.
+
+Upgrade acceptance checklist:
+
+- backend fingerprint, passthrough, compact, and WebSocket parity tests pass;
+- same account and client session keep installation/session/thread/window
+  stable while consecutive turns receive different turn IDs;
+- different client sessions under one account receive different thread/window
+  IDs;
+- session-mode default cache keys resolve to thread IDs;
+- compact bodies remain unchanged while compact headers converge;
+- frontend create/edit/bulk selectors still expose all four stored modes;
+- no migration or admin update silently force-enables existing accounts.
 
 ### OpenAI new-account model defaults and fallback mapping
 

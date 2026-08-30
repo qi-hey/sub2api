@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -280,6 +281,31 @@ func TestApplyCodexFingerprintHeaders_SessionMode_DifferentClients(t *testing.T)
 	assert.NotEqual(t, hA.Get("thread-id"), hB.Get("thread-id"), "不同客户端 thread_id 应不同")
 	assert.NotEqual(t, hA.Get("x-codex-window-id"), hB.Get("x-codex-window-id"), "不同客户端 window_id 应不同")
 	assert.Equal(t, hA.Get("x-codex-installation-id"), hB.Get("x-codex-installation-id"))
+}
+
+func TestResolveCodexFingerprintIDs_SessionModeKeepsThreadStableAndTurnFresh(t *testing.T) {
+	account := newTestOAuthAccount(1, map[string]any{
+		codexFingerprintModeExtraKey: "session",
+	})
+	clientHeaders := http.Header{}
+	clientHeaders.Set("session-id", "client-A")
+
+	before := time.Now().UnixMilli()
+	first := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+	second := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+	after := time.Now().UnixMilli()
+
+	require.NotNil(t, first)
+	require.NotNil(t, second)
+	assert.Equal(t, first.installationID, second.installationID)
+	assert.Equal(t, first.sessionID, second.sessionID)
+	assert.Equal(t, first.threadID, second.threadID)
+	assert.Equal(t, first.windowID, second.windowID)
+	assert.NotEqual(t, first.turnID, second.turnID, "每次请求必须生成新的 turn_id")
+	assert.GreaterOrEqual(t, first.turnStartedAtUnixMs, before)
+	assert.LessOrEqual(t, first.turnStartedAtUnixMs, after)
+	assert.GreaterOrEqual(t, second.turnStartedAtUnixMs, before)
+	assert.LessOrEqual(t, second.turnStartedAtUnixMs, after)
 }
 
 // --- full 模式 ---
@@ -606,7 +632,7 @@ func TestApplyCodexFingerprintPromptCacheKey_MapRawEquivalence(t *testing.T) {
 			mapBody, rawBody := applyMapAndRawFingerprintBodiesForTest(t, body, ids)
 
 			require.Equal(t, mapBody["prompt_cache_key"], rawBody["prompt_cache_key"])
-			require.Equal(t, ids.sessionID, mapBody["prompt_cache_key"])
+			require.Equal(t, resolvedCodexFingerprintPromptCacheKey(ids), mapBody["prompt_cache_key"])
 			mapCM, _ := mapBody["client_metadata"].(map[string]any)
 			rawCM, _ := rawBody["client_metadata"].(map[string]any)
 			require.Equal(t, ids.sessionID, mapCM["session_id"])

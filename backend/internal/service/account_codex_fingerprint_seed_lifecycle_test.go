@@ -38,20 +38,22 @@ func TestAdminCreateAccountStripsUserSeedAndCreatesFreshSeedWhenEnabled(t *testi
 }
 
 func TestPrepareCodexFingerprintExtraForCreateDefaultsNewOpenAIOAuthToSession(t *testing.T) {
-	for _, tt := range []struct {
-		name  string
-		extra map[string]any
-	}{
-		{name: "missing", extra: nil},
-		{name: "empty", extra: map[string]any{codexFingerprintModeExtraKey: ""}},
-		{name: "invalid", extra: map[string]any{codexFingerprintModeExtraKey: "invalid"}},
-		{name: "non string", extra: map[string]any{codexFingerprintModeExtraKey: 123}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			prepared := prepareCodexFingerprintExtraForCreate(PlatformOpenAI, AccountTypeOAuth, tt.extra)
-			require.Equal(t, "session", prepared[codexFingerprintModeExtraKey])
-			requireValidCodexFingerprintSeed(t, prepared)
-		})
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
+		for _, tt := range []struct {
+			name  string
+			extra map[string]any
+		}{
+			{name: "missing", extra: nil},
+			{name: "empty", extra: map[string]any{codexFingerprintModeExtraKey: ""}},
+			{name: "invalid", extra: map[string]any{codexFingerprintModeExtraKey: "invalid"}},
+			{name: "non string", extra: map[string]any{codexFingerprintModeExtraKey: 123}},
+		} {
+			t.Run(accountType+"/"+tt.name, func(t *testing.T) {
+				prepared := prepareCodexFingerprintExtraForCreate(PlatformOpenAI, accountType, tt.extra)
+				require.Equal(t, "session", prepared[codexFingerprintModeExtraKey])
+				requireValidCodexFingerprintSeed(t, prepared)
+			})
+		}
 	}
 }
 
