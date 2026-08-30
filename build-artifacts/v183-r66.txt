@@ -1,0 +1,61 @@
+version=0.1.183-r66
+source_commit=02fa0d8aa25fb60aebe64f52d21dadf029c6a771
+source_tag=custom-v0.1.183-r66
+upstream_tag=v0.1.183
+target=linux/amd64
+go_version=go1.27.0
+build_tags=embed
+build_type=release
+size_bytes=125038752
+sha256=011fd235a3820db806d06e474de9784d2508ba46a7312ccaeb8513c011b3d8da
+artifact=D:/Codex/Codex-VPS-Sub2api/builds/v183-r66/sub2api-0.1.183-r66-linux-amd64
+
+feature:
+- Supersedes the local r65 candidate and retains every r65 fingerprint,
+  migration, frontend, and backend customization.
+- Fixes Grok long-context requests being canceled before reaching xAI.
+- The prompt-budget trimmer now tokenizes fixed instructions and large tool
+  schemas once, caches each input item's token contribution, removes only
+  complete old turns/tool pairs, and rebuilds the outbound request once.
+- The 468,000-token safety budget, latest-turn retention, tool-pair integrity,
+  string-input behavior, model mappings, accounts, proxies, and CC Switch
+  configuration are unchanged.
+
+diagnosis:
+- VPS logs showed the affected Codex Desktop request body was about 2.0 MB.
+- It was reduced from about 481,578 to 466,568 estimated input tokens by
+  removing 143 turns.
+- Each failure spent about 109-113 seconds in response processing and recorded
+  no upstream latency, upstream status, or upstream error event.
+- The reduction log was emitted immediately before context cancellation,
+  proving the request was canceled during local repeated tokenization and did
+  not reach Grok.
+- Historical successful Grok requests reached 494,393 input tokens, so the
+  safety budget was not lowered and no additional conversation memory is
+  discarded by this fix.
+
+verification:
+- Token-breakdown totals exactly match the existing full-request estimator.
+- Production-scale regression body exceeds 1.5 MB and removes 140 complete
+  turns in about 0.23 seconds locally; the test enforces a five-second ceiling.
+- Existing prompt-budget, string-input, split-tool-pair, latest-turn, and
+  single-turn tool-cycle tests passed.
+- Targeted Grok service, repository, and handler suites passed.
+- Backend service suite passed.
+- Full backend go test ./... passed.
+- go vet ./... passed.
+- Frontend sources were not changed; the complete r65 frontend verification
+  remains applicable.
+- git diff --check passed before the feature commit.
+- Linux/amd64 embedded release build completed locally.
+- go version -m confirmed linux/amd64, embed tags, clean source commit
+  02fa0d8aa25fb60aebe64f52d21dadf029c6a771, and Go 1.27.0.
+- Binary inspection confirmed version 0.1.183-r66.
+
+deployment:
+- status=NOT_DEPLOYED
+- deployed_version_remains=0.1.183-r63
+- deploy_gate=explicit_owner_approval
+- vps_files_changed=false
+- vps_database_migrated=false
+- vps_service_restarted=false
