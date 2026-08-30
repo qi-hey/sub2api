@@ -37,7 +37,8 @@ No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
 ### r67 long-session Grok replay fix
 
-Branch `custom/v183-r67` supersedes the deployed r66 release. Before r67, r66
+Branch `custom/v183-r67` supersedes r66 and was deployed on August 30, 2026.
+Before r67, r66
 correctly reduced a 2 MB Grok request from about 484,000 to 467,000 estimated
 tokens in roughly one second, but xAI returned 422 because the shortened full
 history still carried opaque reasoning replay state and a stale

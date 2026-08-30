@@ -51,9 +51,22 @@ verification:
   4e24497075dac22133cb40043757e5920b6ba463, and Go 1.27.0.
 
 deployment:
-- status=NOT_DEPLOYED
-- deployed_version_remains=0.1.183-r66
-- deploy_gate=backup_r66_then_switch
-- vps_files_changed=false
+- status=DEPLOYED
+- deployed_at=2026-08-30T12:21:33Z
+- previous_version=0.1.183-r66
+- active_binary=/opt/sub2api/sub2api
+- active_sha256=9c9190a4fe01ed82a6d89b0c412cb254c79a2bb32348cbd69c92ac4433cc5a53
+- rollback_binary=/opt/sub2api/releases/sub2api-0.1.183-r66.rollback-20260830T1221Z
+- backup=/opt/sub2api/backups/r66-before-r67-20260830T121823Z
+- backup_size=39M
+- health_status=200
+- service_restarts=0
+- long_grok_test_request_bytes=2880676
+- long_grok_test_estimated_before=480065
+- long_grok_test_estimated_after=54
+- long_grok_test_result=GROK_R67_LONG_OK
+- long_grok_test_duration_ms=17902
+- openai_test_result=OPENAI_R67_OK
+- vps_files_changed=true
 - vps_database_migrated=false
-- vps_service_restarted=false
+- vps_service_restarted=true
