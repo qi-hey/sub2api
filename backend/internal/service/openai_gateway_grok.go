@@ -357,6 +357,19 @@ func isGrokCompactionReplayDecodeError(statusCode int, body []byte) bool {
 }
 
 func sanitizeGrokCompactionReplayBody(body []byte) ([]byte, bool, error) {
+	return sanitizeGrokReplayBody(body, false)
+}
+
+// sanitizeGrokTruncatedReplayBody prepares a full-history request after the
+// prompt budget removed old turns. Opaque reasoning/compaction state was
+// generated against the original history and is no longer replayable. Preserve
+// visible summaries, and drop previous_response_id only when the remaining
+// input contains enough tool-call context to stand alone.
+func sanitizeGrokTruncatedReplayBody(body []byte) ([]byte, bool, error) {
+	return sanitizeGrokReplayBody(body, true)
+}
+
+func sanitizeGrokReplayBody(body []byte, dropSelfContainedPreviousResponse bool) ([]byte, bool, error) {
 	converted, err := convertOpenAICompactInputsForGrok(body)
 	if err != nil {
 		return nil, false, fmt.Errorf("convert Grok compaction replay: %w", err)
@@ -375,7 +388,16 @@ func sanitizeGrokCompactionReplayBody(body []byte) ([]byte, bool, error) {
 	if dropEmptyGrokReplayReasoning(requestBody) {
 		changed = true
 	}
-	if previousID, _ := requestBody["previous_response_id"].(string); strings.TrimSpace(previousID) != "" && !HasFunctionCallOutput(requestBody) {
+	dropPreviousResponse := !HasFunctionCallOutput(requestBody)
+	if !dropPreviousResponse && dropSelfContainedPreviousResponse {
+		coverageBody, marshalErr := marshalOpenAIUpstreamJSON(requestBody)
+		if marshalErr != nil {
+			return nil, false, marshalErr
+		}
+		coverage := AnalyzeToolCallOutputContextCoverageBytes(coverageBody)
+		dropPreviousResponse = coverage.ContextCoversAllCallIDs
+	}
+	if previousID, _ := requestBody["previous_response_id"].(string); strings.TrimSpace(previousID) != "" && dropPreviousResponse {
 		delete(requestBody, "previous_response_id")
 		if _, exists := requestBody["store"]; !exists {
 			requestBody["store"] = false

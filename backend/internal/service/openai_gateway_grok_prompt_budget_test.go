@@ -31,6 +31,69 @@ func TestApplyGrokResponsesPromptBudgetKeepsStringInput(t *testing.T) {
 	require.Zero(t, result.RemovedTurns)
 }
 
+func TestApplyGrokResponsesPromptBudgetDropsStaleReplayAfterReduction(t *testing.T) {
+	body, err := json.Marshal(map[string]any{
+		"model":                "grok-4.6",
+		"previous_response_id": "resp_stale_before_reduction",
+		"input": []any{
+			map[string]any{
+				"type":              "reasoning",
+				"encrypted_content": "opaque-history",
+				"summary": []any{
+					map[string]any{"type": "summary_text", "text": "visible summary must remain"},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": strings.Repeat("old context ", 180_000)},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "output_text", "text": "old answer"},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "latest request"},
+				},
+			},
+			map[string]any{
+				"type":      "function_call",
+				"call_id":   "call_latest",
+				"name":      "read",
+				"arguments": "{}",
+			},
+			map[string]any{
+				"type":    "function_call_output",
+				"call_id": "call_latest",
+				"output":  "latest result",
+			},
+		},
+	})
+	require.NoError(t, err)
+	estimated, err := estimateGrokResponsesPromptTokens(body)
+	require.NoError(t, err)
+	limit := estimated - 1
+
+	updated, result, err := applyGrokResponsesPromptBudgetWithLimit(body, limit)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.RemovedTurns)
+	require.LessOrEqual(t, result.EstimatedAfter, limit)
+	require.False(t, gjson.GetBytes(updated, "previous_response_id").Exists())
+	require.False(t, gjson.GetBytes(updated, `input.#(type=="reasoning").encrypted_content`).Exists())
+	require.Contains(t, string(updated), "visible summary must remain")
+	require.Contains(t, string(updated), "latest request")
+	require.True(t, gjson.GetBytes(updated, `input.#(call_id=="call_latest")`).Exists())
+}
+
 func TestApplyGrokResponsesPromptBudgetRemovesOldestCompleteToolTurn(t *testing.T) {
 	body := []byte(`{
 		"model":"grok-4.5",

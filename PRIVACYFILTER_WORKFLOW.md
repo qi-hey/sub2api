@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.1.183`, released as
-`0.1.183-r66`. The upgrade retains all required downstream customizations in
+`0.1.183-r67`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.1.182` and
 `v0.1.183`, including:
 
@@ -35,13 +35,15 @@ this document and the upstream fixes accumulated through `v0.1.182` and
 
 No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
-### Deployed r66 release
+### r67 long-session Grok replay fix
 
-Branch `custom/v183-r66` supersedes the local r65 candidate and was deployed
-on August 30, 2026. The previous `0.1.183-r63` binary, configuration, systemd
-unit, and PostgreSQL database were backed up before the switch.
+Branch `custom/v183-r67` supersedes the deployed r66 release. Before r67, r66
+correctly reduced a 2 MB Grok request from about 484,000 to 467,000 estimated
+tokens in roughly one second, but xAI returned 422 because the shortened full
+history still carried opaque reasoning replay state and a stale
+`previous_response_id` generated against the original history.
 
-The release retains the complete r65 Codex fingerprint convergence change
+The release retains the complete r66 and r65 customizations
 without importing or replacing it with another fork:
 
 - the UI exposes only `off` and the recommended account-balanced `session`;
@@ -67,6 +69,14 @@ without importing or replacing it with another fork:
   complete old turns/tool pairs, and rebuilds the request once. A production
   2 MB Codex request previously spent about 111 seconds rescanning the same
   schema 143 times and was canceled before any upstream request was made.
+- after Grok prompt reduction, opaque reasoning/compaction replay state is
+  removed while visible summaries are retained;
+- a stale `previous_response_id` is removed only when every remaining tool
+  output has a matching tool call or item reference in the retained input;
+- an unpaired tool output keeps `previous_response_id`, preventing the recovery
+  path from creating a new "No tool call found" failure;
+- ordinary below-budget requests and the existing same-account encrypted
+  reasoning retry behavior remain unchanged.
 
 For Grok 402, retain the downstream deterministic `schedulable=false` policy;
 do not regress to upstream's temporary cooldown-only behavior. Upstream
@@ -389,6 +399,10 @@ Upgrade acceptance checklist:
   within five seconds in the backend regression test.
 - Requests whose latest turn alone exceeds the safe budget still return the
   existing explicit compact/new-session error.
+- Any history reduction invalidates opaque replay state derived from the
+  original history. Preserve visible summaries, remove encrypted replay data,
+  and remove `previous_response_id` only when retained tool context is
+  self-contained.
 
 ### Grok Forbidden account maintenance
 

@@ -154,6 +154,44 @@ func TestSanitizeGrokCompactionReplayBodyPreservesVisibleSummary(t *testing.T) {
 	require.True(t, isGrokCompactionReplayDecodeError(http.StatusBadRequest, []byte(`{"error":{"type":"invalid_request_error"},"detail":"could not decode compaction blob"}`)))
 }
 
+func TestSanitizeGrokTruncatedReplayBodyDropsPreviousResponseForCompleteToolPairs(t *testing.T) {
+	body := []byte(`{
+		"previous_response_id":"resp_stale",
+		"input":[
+			{"type":"reasoning","encrypted_content":"opaque","summary":[{"type":"summary_text","text":"keep summary"}]},
+			{"type":"function_call","call_id":"call_1","name":"read","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"ok"}
+		]
+	}`)
+
+	patched, changed, err := sanitizeGrokTruncatedReplayBody(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(patched, "previous_response_id").Exists())
+	require.False(t, gjson.GetBytes(patched, "input.0.encrypted_content").Exists())
+	require.Equal(t, "keep summary", gjson.GetBytes(patched, "input.0.summary.0.text").String())
+	require.Equal(t, "call_1", gjson.GetBytes(patched, "input.1.call_id").String())
+	require.Equal(t, "call_1", gjson.GetBytes(patched, "input.2.call_id").String())
+}
+
+func TestSanitizeGrokTruncatedReplayBodyKeepsPreviousResponseForUnpairedToolOutput(t *testing.T) {
+	body := []byte(`{
+		"previous_response_id":"resp_required_for_tool_output",
+		"input":[
+			{"type":"reasoning","encrypted_content":"opaque","summary":[{"type":"summary_text","text":"keep summary"}]},
+			{"type":"function_call_output","call_id":"call_missing","output":"ok"}
+		]
+	}`)
+
+	patched, changed, err := sanitizeGrokTruncatedReplayBody(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "resp_required_for_tool_output", gjson.GetBytes(patched, "previous_response_id").String())
+	require.False(t, gjson.GetBytes(patched, "input.0.encrypted_content").Exists())
+}
+
 func TestGrokStructuredErrorCandidatesDoNotShadowTopLevelMessages(t *testing.T) {
 	shadowedInvalidEncrypted := []byte(`{"code":"invalid-argument","error":{"type":"invalid_request_error"},"message":"Could not decrypt encrypted_content because it was modified"}`)
 	require.True(t, isGrokInvalidEncryptedContentResponse(http.StatusBadRequest, shadowedInvalidEncrypted))

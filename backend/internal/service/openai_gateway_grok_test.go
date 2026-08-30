@@ -2129,6 +2129,97 @@ func TestForwardGrokResponsesRetriesInvalidEncryptedContentOnce(t *testing.T) {
 	require.False(t, hasTerminalStatus)
 }
 
+func TestForwardGrokResponsesProactivelySanitizesReplayAfterPromptReduction(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body, err := json.Marshal(map[string]any{
+		"model":                "grok-4.6",
+		"previous_response_id": "resp_stale_full_history",
+		"stream":               false,
+		"input": []any{
+			map[string]any{
+				"type":              "reasoning",
+				"encrypted_content": "opaque-history",
+				"summary": []any{
+					map[string]any{"type": "summary_text", "text": "visible history"},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": strings.Repeat("old context ", 240_000)},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "output_text", "text": "old answer"},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "latest request"},
+				},
+			},
+			map[string]any{
+				"type":      "function_call",
+				"call_id":   "call_latest",
+				"name":      "read",
+				"arguments": "{}",
+			},
+			map[string]any{
+				"type":    "function_call_output",
+				"call_id": "call_latest",
+				"output":  "latest result",
+			},
+		},
+	})
+	require.NoError(t, err)
+	estimated, err := estimateGrokResponsesPromptTokens(body)
+	require.NoError(t, err)
+	require.Greater(t, estimated, grokResponsesPromptBudget)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Set("api_key", &APIKey{ID: 4540})
+
+	account := &Account{
+		ID:          4540,
+		Name:        "grok-api-key",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "same-token",
+			"base_url": "https://api.x.ai/v1",
+		},
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_ok","object":"response","model":"grok-4.6","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":1}}`)),
+	}}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok-4.6", false, time.Now())
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1)
+	forwarded := upstream.bodies[0]
+	require.False(t, gjson.GetBytes(forwarded, "previous_response_id").Exists())
+	require.False(t, gjson.GetBytes(forwarded, `input.#(type=="reasoning").encrypted_content`).Exists())
+	require.Contains(t, string(forwarded), "visible history")
+	require.Contains(t, string(forwarded), "latest request")
+	require.True(t, gjson.GetBytes(forwarded, `input.#(call_id=="call_latest")`).Exists())
+}
+
 func TestForwardGrokResponsesInvalidEncryptedContentRecoveryDoesNotOvermatch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

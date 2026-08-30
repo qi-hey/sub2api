@@ -137,6 +137,13 @@ func applyGrokResponsesPromptBudgetWithLimit(body []byte, budget int) ([]byte, g
 	if err != nil {
 		return body, result, fmt.Errorf("encode reduced Grok prompt: %w", err)
 	}
+	rebuilt, _, err = sanitizeGrokTruncatedReplayBody(rebuilt)
+	if err != nil {
+		return body, result, fmt.Errorf("sanitize truncated Grok replay state: %w", err)
+	}
+	if estimatedAfter, estimateErr := estimateGrokResponsesPromptTokens(rebuilt); estimateErr == nil {
+		result.EstimatedAfter = estimatedAfter
+	}
 	return rebuilt, result, nil
 }
 
