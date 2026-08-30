@@ -1,0 +1,53 @@
+version=0.1.183-r65
+source_commit=3f0df3ac6330ca594747d051f2ca35882170af99
+source_tag=custom-v0.1.183-r65
+upstream_tag=v0.1.183
+target=linux/amd64
+go_version=go1.27.0
+build_tags=embed
+build_type=release
+size_bytes=125034656
+sha256=5ae70fdfae906f5ea47b33a5208fd2aea356cc6403df7606fc7e5db9ebe8bae2
+artifact=D:/Codex/Codex-VPS-Sub2api/builds/v183-r65/sub2api-0.1.183-r65-linux-amd64
+
+feature:
+- Supersedes the local r64 candidate; no code was imported from another fork.
+- The existing Codex fingerprint convergence panel remains, but create, edit,
+  and bulk-edit flows now expose only off and account-balanced session.
+- Legacy device/full stored values and API updates normalize to session.
+- New OpenAI OAuth and Setup Token accounts default to session.
+- Migration 231 changes every existing active OpenAI OAuth/Setup Token account
+  to session once and creates a missing per-account seed while preserving a
+  valid existing seed.
+- Administrators can manually switch an account to off after migration. Create,
+  edit, and bulk-edit flows store off explicitly so JSONB merge cannot ignore
+  the choice.
+- Retains r64 balanced identity behavior: account-stable installation/session,
+  client-session-derived thread/window, fresh turn UUID/time, thread-scoped
+  default prompt cache keys, and compact header convergence without compact
+  body rewriting.
+
+verification:
+- Targeted backend fingerprint and migration tests passed.
+- Backend service, WebSocket v2, and migrations suites passed.
+- Other backend packages passed in the full go test ./... run before the two
+  obsolete device-mode WebSocket expectations were updated; the affected
+  service suite was rerun successfully afterward.
+- go vet ./... passed.
+- Frontend full suite passed: 262 files, 1878 tests.
+- Frontend targeted account suites passed: 134 tests.
+- Frontend lint:check passed.
+- Frontend production build passed and refreshed the embedded dist.
+- git diff --check passed.
+- Linux/amd64 embedded release build completed locally.
+- go version -m confirmed linux/amd64, embed tags, and clean source commit
+  3f0df3ac6330ca594747d051f2ca35882170af99.
+- Binary inspection confirmed version 0.1.183-r65 and the source commit.
+
+deployment:
+- status=NOT_DEPLOYED
+- deployed_version_remains=0.1.183-r63
+- deploy_gate=wait_for_owner_quota_reset_and_explicit_approval
+- vps_files_changed=false
+- vps_database_migrated=false
+- vps_service_restarted=false
