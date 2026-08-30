@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 )
 
 const (
@@ -19,6 +21,12 @@ type grokPromptBudgetResult struct {
 	RemovedTurns    int
 	RemovedItems    int
 	RemovedToolSets int
+}
+
+type grokPromptTokenBreakdown struct {
+	FixedTokens int
+	ItemTokens  []int
+	TotalTokens int
 }
 
 type GrokPromptBudgetError struct {
@@ -50,13 +58,13 @@ func applyGrokResponsesPromptBudgetWithLimit(body []byte, budget int) ([]byte, g
 		return body, result, fmt.Errorf("invalid Grok prompt budget: %d", budget)
 	}
 
-	estimated, err := estimateGrokResponsesPromptTokens(body)
+	tokenBreakdown, err := estimateGrokResponsesPromptTokenBreakdown(body)
 	if err != nil {
 		return body, result, fmt.Errorf("estimate Grok prompt tokens: %w", err)
 	}
-	result.EstimatedBefore = estimated
-	result.EstimatedAfter = estimated
-	if estimated <= budget {
+	result.EstimatedBefore = tokenBreakdown.TotalTokens
+	result.EstimatedAfter = tokenBreakdown.TotalTokens
+	if result.EstimatedAfter <= budget {
 		return body, result, nil
 	}
 
@@ -69,30 +77,45 @@ func applyGrokResponsesPromptBudgetWithLimit(body []byte, budget int) ([]byte, g
 	items, ok := requestBody["input"].([]any)
 	if !ok || len(items) == 0 {
 		return body, result, &GrokPromptBudgetError{
-			Estimated: estimated,
+			Estimated: result.EstimatedAfter,
 			Budget:    budget,
 			Reason:    "the request has no safely removable complete turns",
 		}
 	}
+	if len(tokenBreakdown.ItemTokens) != len(items) {
+		return body, result, fmt.Errorf(
+			"estimate Grok prompt tokens: input item count mismatch (%d decoded items, %d token entries)",
+			len(items),
+			len(tokenBreakdown.ItemTokens),
+		)
+	}
+	itemTokens := tokenBreakdown.ItemTokens
 
 	for result.EstimatedAfter > budget {
 		turns := grokPromptTurns(items)
 		removed := 0
+		removedTokens := 0
 		if len(turns) > 1 && grokPromptTurnHasSelfContainedToolPairs(items[turns[0].start:turns[0].end]) {
 			oldest := turns[0]
 			removed = oldest.end - oldest.start
+			removedTokens = sumGrokPromptItemTokens(itemTokens[oldest.start:oldest.end])
 			items = append(items[:oldest.start], items[oldest.end:]...)
+			itemTokens = append(itemTokens[:oldest.start], itemTokens[oldest.end:]...)
 			result.RemovedTurns++
 		} else if removable := grokOldestRemovableToolSet(items); len(removable) > 0 {
 			filtered := make([]any, 0, len(items)-len(removable))
+			filteredTokens := make([]int, 0, len(itemTokens)-len(removable))
 			for i, item := range items {
 				if _, drop := removable[i]; drop {
 					removed++
+					removedTokens += itemTokens[i]
 					continue
 				}
 				filtered = append(filtered, item)
+				filteredTokens = append(filteredTokens, itemTokens[i])
 			}
 			items = filtered
+			itemTokens = filteredTokens
 			result.RemovedToolSets++
 		} else {
 			return body, result, &GrokPromptBudgetError{
@@ -102,22 +125,79 @@ func applyGrokResponsesPromptBudgetWithLimit(body []byte, budget int) ([]byte, g
 			}
 		}
 
-		requestBody["input"] = items
 		result.RemovedItems += removed
-
-		rebuilt, marshalErr := marshalOpenAIUpstreamJSON(requestBody)
-		if marshalErr != nil {
-			return body, result, fmt.Errorf("encode reduced Grok prompt: %w", marshalErr)
+		if removedTokens <= 0 {
+			return body, result, fmt.Errorf("estimate reduced Grok prompt tokens: removed items had no token weight")
 		}
-		estimated, err = estimateGrokResponsesPromptTokens(rebuilt)
-		if err != nil {
-			return body, result, fmt.Errorf("estimate reduced Grok prompt tokens: %w", err)
-		}
-		result.EstimatedAfter = estimated
-		body = rebuilt
+		result.EstimatedAfter -= removedTokens
 	}
 
-	return body, result, nil
+	requestBody["input"] = items
+	rebuilt, err := marshalOpenAIUpstreamJSON(requestBody)
+	if err != nil {
+		return body, result, fmt.Errorf("encode reduced Grok prompt: %w", err)
+	}
+	return rebuilt, result, nil
+}
+
+func estimateGrokResponsesPromptTokenBreakdown(body []byte) (grokPromptTokenBreakdown, error) {
+	var req openAIInputTokensCountRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return grokPromptTokenBreakdown{}, err
+	}
+	if strings.TrimSpace(req.Model) == "" {
+		return grokPromptTokenBreakdown{}, fmt.Errorf("model is required")
+	}
+
+	trimmedInput := bytes.TrimSpace(req.Input)
+	if len(trimmedInput) == 0 || trimmedInput[0] != '[' {
+		totalTokens, err := estimateOpenAIInputTokens(req)
+		if err != nil {
+			return grokPromptTokenBreakdown{}, err
+		}
+		return grokPromptTokenBreakdown{TotalTokens: totalTokens}, nil
+	}
+
+	var inputItems []apicompat.ResponsesInputItem
+	if err := json.Unmarshal(req.Input, &inputItems); err != nil {
+		return grokPromptTokenBreakdown{}, fmt.Errorf("decode input items: %w", err)
+	}
+
+	// Count the fixed instructions/tool schema once, then cache each input item's
+	// contribution. Recounting a multi-megabyte tool schema after every removed
+	// turn made long Codex sessions spend minutes trimming before reaching xAI.
+	codec, err := openAIInputTokensCodecForModel(req.Model)
+	if err != nil {
+		return grokPromptTokenBreakdown{}, err
+	}
+	req.Input = nil
+	fixedTokens, err := estimateOpenAIInputTokens(req)
+	if err != nil {
+		return grokPromptTokenBreakdown{}, err
+	}
+
+	itemTokens := make([]int, len(inputItems))
+	totalTokens := fixedTokens
+	for i := range inputItems {
+		itemTokens[i], err = estimateOpenAIInputTokensForInputItems(codec, inputItems[i:i+1])
+		if err != nil {
+			return grokPromptTokenBreakdown{}, err
+		}
+		totalTokens += itemTokens[i]
+	}
+	return grokPromptTokenBreakdown{
+		FixedTokens: fixedTokens,
+		ItemTokens:  itemTokens,
+		TotalTokens: totalTokens,
+	}, nil
+}
+
+func sumGrokPromptItemTokens(tokens []int) int {
+	total := 0
+	for _, count := range tokens {
+		total += count
+	}
+	return total
 }
 
 // grokOldestRemovableToolSet returns one complete, non-latest tool-call set.

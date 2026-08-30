@@ -35,14 +35,14 @@ this document and the upstream fixes accumulated through `v0.1.182` and
 
 No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
-### Local-only r65 candidate
+### Local-only r66 candidate
 
-Branch `custom/v183-r65` supersedes the local r64 candidate and remains based
+Branch `custom/v183-r66` supersedes the local r65 candidate and remains based
 on the deployed `0.1.183-r63`. It must not be deployed until the owner
 explicitly schedules a post-quota-reset test. The VPS remains on
 `0.1.183-r63`.
 
-The candidate refines the existing Codex fingerprint convergence feature
+The candidate retains the complete r65 Codex fingerprint convergence change
 without importing or replacing it with another fork:
 
 - the UI exposes only `off` and the recommended account-balanced `session`;
@@ -63,6 +63,11 @@ without importing or replacing it with another fork:
   once and creates missing seeds;
 - after migration, administrators can manually select `off`; that choice is
   not periodically or on every restart forced back to `session`.
+- Grok prompt-budget trimming now tokenizes fixed instructions and multi-megabyte
+  tool schemas once, caches each input item's token contribution, removes only
+  complete old turns/tool pairs, and rebuilds the request once. A production
+  2 MB Codex request previously spent about 111 seconds rescanning the same
+  schema 143 times and was canceled before any upstream request was made.
 
 For Grok 402, retain the downstream deterministic `schedulable=false` policy;
 do not regress to upstream's temporary cooldown-only behavior. Upstream
@@ -362,6 +367,29 @@ Upgrade acceptance checklist:
 - IDs, call IDs, names, freeform input, outputs, and ordinary messages survive.
 - Native Grok function-tool history is a no-op.
 - Grok protocol, service, and OpenAI-to-Grok fallback tests pass.
+
+### Grok long-context prompt budgeting
+
+Grok Responses prompt budgeting must retain the 468,000-token safety budget,
+latest turn, fixed instructions, current tools, and complete tool call/output
+pairs. When old history must be removed, fixed instructions and tool schemas
+are tokenized once and each input item's contribution is cached. The trimmer
+must not re-marshal and re-tokenize the full request after every removed turn.
+
+This requirement applies to native Responses, Anthropic-to-Grok conversion,
+and the WebSocket HTTP bridge because all three paths share
+`applyGrokResponsesPromptBudget`.
+
+Upgrade acceptance checklist:
+
+- Cached per-item totals exactly match the existing full-request estimator.
+- String input and below-budget requests remain byte-for-byte unchanged.
+- Old complete turns and complete tool sets are removed without splitting a
+  tool call from its output.
+- A production-scale request larger than 1.5 MB can remove at least 140 turns
+  within five seconds in the backend regression test.
+- Requests whose latest turn alone exceeds the safe budget still return the
+  existing explicit compact/new-session error.
 
 ### Grok Forbidden account maintenance
 
