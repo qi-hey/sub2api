@@ -1,0 +1,59 @@
+version=0.1.183-r67
+source_commit=4e24497075dac22133cb40043757e5920b6ba463
+source_tag=custom-v0.1.183-r67
+upstream_tag=v0.1.183
+target=linux/amd64
+go_version=go1.27.0
+build_tags=embed
+build_type=release
+size_bytes=125038752
+sha256=9c9190a4fe01ed82a6d89b0c412cb254c79a2bb32348cbd69c92ac4433cc5a53
+artifact=D:/Codex/Codex-VPS-Sub2api/builds/v183-r67/sub2api-0.1.183-r67-linux-amd64
+
+feature:
+- Supersedes deployed r66 and retains all previous downstream customizations.
+- Fixes Grok long-session HTTP 422 after r66 context reduction.
+- When old turns are removed, opaque reasoning/compaction replay state is
+  removed while visible summaries remain in the retained input.
+- Stale previous_response_id is removed only when every retained tool output is
+  covered by a matching tool call or item reference.
+- Unpaired tool outputs retain previous_response_id to avoid breaking valid
+  delta continuations.
+- The existing 468,000-token prompt budget, tool definitions, model mappings,
+  account settings, proxies, CC Switch configuration, and OpenAI paths are
+  unchanged.
+
+diagnosis:
+- r66 reduced the affected 2 MB request from about 484,367 to 467,489 estimated
+  tokens in about one second.
+- xAI then returned 422, the gateway detected a replay/compaction decode error,
+  retried after stripping encrypted state, but retained a stale
+  previous_response_id because function outputs existed.
+- The retry returned another 422 and the only Grok account in the group was
+  excluded, so the client saw 502/connection failed.
+- OpenAI gpt-5.6-sol and short Grok requests remained healthy.
+
+verification:
+- New full-forward regression sends a greater-than-budget Grok request and
+  verifies the first upstream attempt already has valid replay state.
+- Complete tool-pair and unpaired-output recovery cases passed.
+- Existing same-account encrypted reasoning retry remains unchanged and passed.
+- Prompt-budget correctness, large-schema performance, Grok tool protocol, and
+  replay-summary tests passed.
+- Full backend go test ./... passed.
+- go vet ./... passed.
+- A broad unit-tagged Grok-only sweep exposed four pre-existing environment/
+  policy-sensitive failures unrelated to the changed files; all directly
+  affected tests passed independently.
+- git diff --check passed.
+- Linux/amd64 embedded release build completed locally.
+- go version -m confirmed linux/amd64, embed tags, clean source commit
+  4e24497075dac22133cb40043757e5920b6ba463, and Go 1.27.0.
+
+deployment:
+- status=NOT_DEPLOYED
+- deployed_version_remains=0.1.183-r66
+- deploy_gate=backup_r66_then_switch
+- vps_files_changed=false
+- vps_database_migrated=false
+- vps_service_restarted=false
