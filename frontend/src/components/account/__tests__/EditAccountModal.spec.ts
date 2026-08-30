@@ -328,6 +328,53 @@ describe('EditAccountModal', () => {
     authIsSimpleMode.value = true
   })
 
+  it('defaults existing OpenAI OAuth accounts to account-balanced fingerprint mode', () => {
+    const wrapper = mountModal(buildOpenAIOAuthParentAccount())
+    const select = wrapper.getComponent('[data-testid="edit-codex-fingerprint-mode-select"]')
+
+    expect(select.props('modelValue')).toBe('session')
+    const options = select.props('options') as Array<{ value: string }>
+    expect(options.map(option => option.value)).toEqual(['off', 'session'])
+  })
+
+  it('normalizes legacy fingerprint modes while preserving a manual off choice', () => {
+    const legacy = buildOpenAIOAuthParentAccount()
+    legacy.extra = { codex_fingerprint_mode: 'full' }
+    const legacyWrapper = mountModal(legacy)
+    expect(
+      legacyWrapper
+        .getComponent('[data-testid="edit-codex-fingerprint-mode-select"]')
+        .props('modelValue')
+    ).toBe('session')
+    legacyWrapper.unmount()
+
+    const disabled = buildOpenAIOAuthParentAccount()
+    disabled.extra = { codex_fingerprint_mode: 'off' }
+    const disabledWrapper = mountModal(disabled)
+    expect(
+      disabledWrapper
+        .getComponent('[data-testid="edit-codex-fingerprint-mode-select"]')
+        .props('modelValue')
+    ).toBe('off')
+  })
+
+  it('persists a manual fingerprint off choice explicitly', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { codex_fingerprint_mode: 'session' }
+    updateAccountMock.mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    await wrapper
+      .getComponent('[data-testid="edit-codex-fingerprint-mode-select"]')
+      .vm.$emit('update:modelValue', 'off')
+    await wrapper.vm.$nextTick()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_fingerprint_mode).toBe('off')
+  })
+
   it('caps Grok account concurrency at two', async () => {
     const wrapper = mountModal(buildGrokOAuthAccount())
     const concurrencyInput = wrapper.get('[data-testid="account-concurrency-input"]')

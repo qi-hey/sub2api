@@ -771,58 +771,6 @@ func TestOpenAIWSConnPool_AcquireRoutingHintRemainsSoftAffinity(t *testing.T) {
 	require.Equal(t, 1, dialer.DialCount())
 }
 
-func TestOpenAIWSConnPool_DeviceModeKeysOnlyInstallationIdentity(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
-	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
-	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
-
-	pool := newOpenAIWSConnPool(cfg)
-	dialer := &openAIWSCountingDialer{}
-	pool.setClientDialerForTest(dialer)
-	account := activeCodexFingerprintPoolAccountForTest(135)
-	account.Extra[codexFingerprintModeExtraKey] = "device"
-
-	firstHeaders := stableOpenAIWSIdentityHeadersForTest()
-	first, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
-		Account: account,
-		WSURL:   "wss://example.com/v1/responses",
-		Headers: firstHeaders,
-	})
-	require.NoError(t, err)
-	firstConnID := first.ConnID()
-	first.Release()
-
-	sessionChanged := stableOpenAIWSIdentityHeadersForTest()
-	sessionChanged.Set("session-id", "session-hyphen-b")
-	sessionChanged.Set("session_id", "session-underscore-b")
-	sessionChanged.Set("thread-id", "thread-b")
-	sessionChanged.Set("x-client-request-id", "client-request-b")
-	sessionChanged.Set("x-codex-window-id", "window-b")
-	second, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
-		Account: account,
-		WSURL:   "wss://example.com/v1/responses",
-		Headers: sessionChanged,
-	})
-	require.NoError(t, err)
-	require.True(t, second.Reused())
-	require.Equal(t, firstConnID, second.ConnID())
-	second.Release()
-
-	installationChanged := sessionChanged.Clone()
-	installationChanged.Set("x-codex-installation-id", "install-b")
-	third, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
-		Account: account,
-		WSURL:   "wss://example.com/v1/responses",
-		Headers: installationChanged,
-	})
-	require.NoError(t, err)
-	require.False(t, third.Reused())
-	require.NotEqual(t, firstConnID, third.ConnID())
-	third.Release()
-	require.Equal(t, 2, dialer.DialCount())
-}
-
 func TestOpenAIWSConnPool_AcquireReplacesIdleConnWithDifferentBetaFeatures(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1

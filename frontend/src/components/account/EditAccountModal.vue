@@ -3236,8 +3236,8 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
-type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
-const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+type CodexFingerprintMode = 'off' | 'session'
+const codexFingerprintMode = ref<CodexFingerprintMode>('session')
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -3271,9 +3271,7 @@ const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
-  { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
-  { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
 
 const openAIWSModeOptions = computed(() => [
@@ -3724,7 +3722,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
-  codexFingerprintMode.value = 'off'
+  codexFingerprintMode.value = 'session'
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -3776,12 +3774,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       codexCLIOnlyAppServerEnabled.value =
         extra?.codex_cli_only_allow_app_server === true
     }
-    if (newAccount.type === 'oauth') {
+    if (newAccount.type === 'oauth' || newAccount.type === 'setup-token') {
       const fpMode = extra?.codex_fingerprint_mode as string | undefined
-      // 缺省/非法值按 off 呈现，与后端 GetCodexFingerprintMode 的 opt-in 语义一致（#5610）
-      codexFingerprintMode.value = (['off', 'device', 'session', 'full'].includes(fpMode || '')
-        ? fpMode as CodexFingerprintMode
-        : 'off')
+      // 升级迁移会把存量 OAuth 账号统一为 session；旧 device/full 值也按
+      // 账号级平衡呈现。管理员手动选择 off 后仍可保持关闭。
+      codexFingerprintMode.value = fpMode === 'off' ? 'off' : 'session'
     }
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
@@ -5239,14 +5236,9 @@ const handleSubmit = async () => {
         }
       }
 
-      // 指纹收敛模式：默认 off（不写入）；device/session/full 是显式 opt-in，
-      // 必须落键，否则管理员的选择会被后端当作"未设置"而回落到 off（#5610）。
-      if (props.account.type === 'oauth') {
-        if (codexFingerprintMode.value !== 'off') {
-          newExtra.codex_fingerprint_mode = codexFingerprintMode.value
-        } else {
-          delete newExtra.codex_fingerprint_mode
-        }
+      // 两种模式都显式落键，确保管理员手动关闭后保持 off。
+      if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
+        newExtra.codex_fingerprint_mode = codexFingerprintMode.value
       }
 
       updatePayload.extra = newExtra

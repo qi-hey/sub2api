@@ -430,7 +430,7 @@ func TestOpenAIGatewayService_BuildOpenAIWSHeadersPreservesCodexIdentity(t *test
 	require.Empty(t, headers.Get("X-Test"))
 }
 
-func TestOpenAIGatewayService_BuildOpenAIWSHeadersDeviceModePreservesNamespacedClientSessionIdentity(t *testing.T) {
+func TestOpenAIGatewayService_BuildOpenAIWSHeadersLegacyDeviceModeUsesBalancedIdentity(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -463,12 +463,13 @@ func TestOpenAIGatewayService_BuildOpenAIWSHeadersDeviceModePreservesNamespacedC
 	)
 
 	require.NoError(t, err)
+	require.Equal(t, codexFingerprintSession, ids.mode)
 	require.Equal(t, ids.installationID, headers.Get("x-codex-installation-id"))
 	require.NotEqual(t, "client-installation", headers.Get("x-codex-installation-id"))
-	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "window", "client-window"), headers.Get("x-codex-window-id"))
-	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "session", "client-session"), headers.Get("session-id"))
-	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "thread", "client-thread"), headers.Get("thread-id"))
-	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "request", "client-request"), headers.Get("x-client-request-id"))
+	require.Equal(t, ids.windowID, headers.Get("x-codex-window-id"))
+	require.Equal(t, ids.sessionID, headers.Get("session-id"))
+	require.Equal(t, ids.threadID, headers.Get("thread-id"))
+	require.Equal(t, ids.threadID, headers.Get("x-client-request-id"))
 }
 
 func TestLogOpenAIWSBindResponseAccountWarn(t *testing.T) {

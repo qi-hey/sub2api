@@ -35,17 +35,18 @@ this document and the upstream fixes accumulated through `v0.1.182` and
 
 No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
-### Local-only r64 candidate
+### Local-only r65 candidate
 
-Branch `custom/v183-r64` is a local-only candidate based on the deployed
-`0.1.183-r63`. It must not be deployed until the owner explicitly schedules a
-post-quota-reset A/B test. The VPS remains on `0.1.183-r63`.
+Branch `custom/v183-r65` supersedes the local r64 candidate and remains based
+on the deployed `0.1.183-r63`. It must not be deployed until the owner
+explicitly schedules a post-quota-reset test. The VPS remains on
+`0.1.183-r63`.
 
 The candidate refines the existing Codex fingerprint convergence feature
 without importing or replacing it with another fork:
 
-- all four stored modes remain available: `off`, `device`, `session`, `full`;
-- `session` is presented as the recommended account-balanced mode;
+- the UI exposes only `off` and the recommended account-balanced `session`;
+- legacy stored `device` and `full` values normalize to `session`;
 - each enabled OpenAI OAuth-like account keeps its own persistent seed;
 - account-balanced mode stabilizes installation/session IDs, derives a stable
   thread/window per real client session, and keeps turn IDs and timestamps
@@ -56,10 +57,12 @@ without importing or replacing it with another fork:
   fingerprint snapshot;
 - legacy `/responses/compact` bodies remain untouched for compatibility, while
   their outbound headers now use the same account-balanced fingerprint;
-- new OpenAI OAuth and Setup Token accounts default to `session`; existing
-  accounts with no stored mode remain `off`;
-- no migration force-enables existing accounts or removes the administrator's
-  mode selector.
+- new OpenAI OAuth and Setup Token accounts default to `session`;
+- migration `231_default_existing_openai_codex_fingerprint_balanced.sql`
+  changes all existing active OpenAI OAuth/Setup Token accounts to `session`
+  once and creates missing seeds;
+- after migration, administrators can manually select `off`; that choice is
+  not periodically or on every restart forced back to `session`.
 
 For Grok 402, retain the downstream deterministic `schedulable=false` policy;
 do not regress to upstream's temporary cooldown-only behavior. Upstream
@@ -70,9 +73,10 @@ runtime fallback.
 
 ### Codex account-balanced fingerprint convergence
 
-This is a required downstream feature. Preserve the stored
-`codex_fingerprint_mode` contract and the `off`, `device`, `session`, and
-`full` values across future upgrades.
+This is a required downstream feature. The supported administrator-facing
+`codex_fingerprint_mode` values are `off` and `session`. Legacy `device` and
+`full` inputs must normalize to `session` for upgrade compatibility and must
+not appear in the frontend.
 
 The `session` value is the default balanced policy for newly created OpenAI
 OAuth-like accounts:
@@ -89,15 +93,17 @@ OAuth-like accounts:
 - explicit non-default `prompt_cache_key`: preserved.
 
 Account duplication must mint a new seed. User-supplied seeds must be ignored.
-Missing/invalid modes on new accounts default to `session`, but missing modes
-on existing accounts remain `off`. Enabling a mode through full edit, key-level
-update, or bulk update must create a missing seed atomically.
+Missing/invalid modes on new accounts default to `session`. Migration 231
+converts all existing active OpenAI OAuth-like accounts to `session` once.
+Enabling the mode through full edit, key-level update, or bulk update must
+create a missing seed atomically. A later manual `off` remains off because
+completed migrations are not rerun.
 
 All HTTP, passthrough, and WebSocket paths must share the same resolved IDs.
 Compact request bodies must not receive normal Responses `client_metadata`
-rewrites, but compact outbound headers must still converge. The UI must retain
-all four options and label `session` as `Account balanced (recommended)` /
-`账号级平衡（推荐）`; `full` remains available but is explicitly experimental.
+rewrites, but compact outbound headers must still converge. The UI must expose
+only `Off` / `关闭` and `Account balanced (recommended)` /
+`账号级平衡（推荐）`.
 
 Upgrade acceptance checklist:
 
@@ -108,8 +114,10 @@ Upgrade acceptance checklist:
   IDs;
 - session-mode default cache keys resolve to thread IDs;
 - compact bodies remain unchanged while compact headers converge;
-- frontend create/edit/bulk selectors still expose all four stored modes;
-- no migration or admin update silently force-enables existing accounts.
+- frontend create/edit/bulk selectors expose only `off` and `session`;
+- migration 231 updates OAuth and Setup Token accounts but leaves API-key and
+  non-OpenAI accounts unchanged;
+- after migration, an administrator can manually switch an account off.
 
 ### OpenAI new-account model defaults and fallback mapping
 

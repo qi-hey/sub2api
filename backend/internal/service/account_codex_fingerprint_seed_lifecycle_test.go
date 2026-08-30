@@ -142,7 +142,7 @@ func TestAdminUpdateAccountPreservesExistingSeedAndStripsUserSeed(t *testing.T) 
 
 	require.NoError(t, err)
 	require.Equal(t, testCodexFingerprintSeed, requireValidCodexFingerprintSeed(t, updated.Extra))
-	require.Equal(t, "full", updated.Extra[codexFingerprintModeExtraKey])
+	require.Equal(t, "session", updated.Extra[codexFingerprintModeExtraKey])
 	require.Equal(t, "value", updated.Extra["custom"])
 }
 
@@ -168,7 +168,7 @@ func TestAdminUpdateAccountInitializesSeedWhenFullEditEnables(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotEqual(t, "not-a-seed", requireValidCodexFingerprintSeed(t, updated.Extra))
-	require.Equal(t, "device", updated.Extra[codexFingerprintModeExtraKey])
+	require.Equal(t, "session", updated.Extra[codexFingerprintModeExtraKey])
 }
 
 func TestAdminUpdateAccountDisableReenablePreservesValidSeed(t *testing.T) {
@@ -218,7 +218,7 @@ func TestAdminUpdateAccountExtraStripsSeedAndLeavesAtomicEnsureToRepository(t *t
 
 	require.NoError(t, err)
 	require.Len(t, repo.updates[accountID], 1)
-	require.Equal(t, "device", repo.updates[accountID][0][codexFingerprintModeExtraKey])
+	require.Equal(t, "session", repo.updates[accountID][0][codexFingerprintModeExtraKey])
 	require.NotContains(t, repo.updates[accountID][0], codexFingerprintSeedExtraKey)
 }
 
@@ -319,5 +319,5 @@ func TestAccountServiceCreateAndUpdateCodexSeedLifecycle(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, createdSeed, requireValidCodexFingerprintSeed(t, updated.Extra))
-	require.Equal(t, "full", updated.Extra[codexFingerprintModeExtraKey])
+	require.Equal(t, "session", updated.Extra[codexFingerprintModeExtraKey])
 }
