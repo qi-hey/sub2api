@@ -1,0 +1,65 @@
+version=0.1.183-r68
+source_commit=97bb4ac3fd1790204765fb26ad5eee67ed8a8e93
+source_tag=custom-v0.1.183-r68
+upstream_tag=v0.1.183
+target=linux/amd64
+go_version=go1.27.0
+build_tags=embed
+build_type=release
+size_bytes=125038752
+sha256=3f21b011bd959571aefcaf644401ea5375a2fd192b60038f987061852cb5e670
+artifact=D:/Codex/Codex-VPS-Sub2api/builds/v183-r68/sub2api-0.1.183-r68-linux-amd64
+
+feature:
+- Supersedes deployed r67 and retains all previous downstream customizations.
+- Removes retained stale reasoning shells, including rs_* IDs, after Grok
+  long-session history reduction.
+- Converts visible retained reasoning summaries into ordinary conversation
+  summary messages before forwarding to xAI.
+- Keeps complete tool call/output pairs and preserves previous_response_id for
+  unpaired outputs.
+- Persists a bounded xAI upstream error response detail without logging request
+  content or credentials.
+- OpenAI paths, model mappings, accounts, proxies, CC Switch configuration, and
+  the 468,000-token Grok prompt budget are unchanged.
+
+diagnosis:
+- The production r67 failure was Ops #10210 at 2026-08-30T20:34:43+08:00.
+- The 2 MB request was reduced below the Grok prompt budget, but xAI rejected
+  retained reasoning items carrying stale rs_* IDs with HTTP 422.
+- The screenshot supplied after r68 deployment still showed that pre-r68 event.
+
+verification:
+- Targeted stale rs_* replay tests passed.
+- Full backend go test ./... passed.
+- go vet ./... passed.
+- OpenAI production test returned OPENAI_R68_OK.
+- Non-streaming 2,880,733-byte Grok replay returned GROK_R68_RS_OK with HTTP 200.
+- Streaming 2,694,399-byte realistic Codex history replay included stale rs_*,
+  visible reasoning summary, and a complete function call/output pair.
+- Streaming replay reduced 644,655 estimated tokens to 466,169, removed 72 old
+  turns/144 items, returned HTTP 200, completed normally, and produced
+  GROK_R68_REAL_STREAM_OK.
+- No Grok HTTP 422 was recorded after r68 deployment.
+
+deployment:
+- status=DEPLOYED
+- deployed_at=2026-08-30T12:47:42Z
+- active_binary=/opt/sub2api/sub2api
+- active_sha256=3f21b011bd959571aefcaf644401ea5375a2fd192b60038f987061852cb5e670
+- previous_version=0.1.183-r67
+- rollback_binary=/opt/sub2api/releases/sub2api-0.1.183-r67.rollback-20260830T1247Z
+- backup=/opt/sub2api/backups/r67-before-r68-20260830T124249Z
+- health_status=200
+- service_restarts=0
+- stream_test_request_bytes=2694399
+- stream_test_estimated_before=644655
+- stream_test_estimated_after=466169
+- stream_test_removed_turns=72
+- stream_test_removed_items=144
+- stream_test_headers_ms=14340
+- stream_test_server_duration_ms=107882
+- stream_test_result=GROK_R68_REAL_STREAM_OK
+- vps_files_changed=true
+- vps_database_migrated=false
+- vps_service_restarted=true
