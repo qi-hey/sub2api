@@ -1,0 +1,49 @@
+version=0.1.183-r64
+source_commit=e512a432ffd305e82b9f0313eeda747d68754741
+source_tag=custom-v0.1.183-r64
+upstream_tag=v0.1.183
+target=linux/amd64
+go_version=go1.27.0
+build_tags=embed
+build_type=release
+size_bytes=125034656
+sha256=9758c28350d15f7e602609d9df91f4061cc6ce9915f4f7d3100bc580e58e92e3
+artifact=D:/Codex/Codex-VPS-Sub2api/builds/v183-r64/sub2api-0.1.183-r64-linux-amd64
+
+feature:
+- Refines the existing four-mode Codex fingerprint convergence implementation;
+  no code was imported from the forever94yu fork.
+- Keeps off, device, session, and full in create, edit, and bulk-edit flows.
+- Presents session as the recommended account-balanced mode while retaining
+  full as an explicit experimental option.
+- Preserves one system-managed seed per OpenAI OAuth-like account; new accounts
+  still default to session while existing accounts without a stored mode remain
+  off.
+- Session mode keeps installation/session stable per account, derives
+  thread/window from the real client session, and keeps turn UUID/timestamps
+  fresh per request.
+- Default prompt_cache_key now follows the derived thread instead of becoming
+  account-global; explicit custom cache keys remain unchanged.
+- Legacy /responses/compact request bodies remain untouched, but normal and
+  passthrough compact outbound headers now use the account fingerprint.
+
+verification:
+- Targeted Codex fingerprint, passthrough, compact, and WebSocket tests passed.
+- Backend full suite passed: go test ./...
+- Backend static analysis passed: go vet ./...
+- Frontend full suite passed: 262 files, 1874 tests.
+- Frontend lint:check passed.
+- Frontend production build passed and refreshed the embedded dist.
+- git diff --check passed.
+- Linux/amd64 embedded release build completed locally.
+- go version -m confirmed linux/amd64, embed tags, clean source commit
+  e512a432ffd305e82b9f0313eeda747d68754741.
+- Binary string inspection confirmed version 0.1.183-r64, source commit, and
+  release build markers.
+
+deployment:
+- status=NOT_DEPLOYED
+- deployed_version_remains=0.1.183-r63
+- deploy_gate=wait_for_owner_quota_reset_and_explicit_approval
+- vps_files_changed=false
+- vps_service_restarted=false
