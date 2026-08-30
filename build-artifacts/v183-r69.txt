@@ -1,0 +1,68 @@
+version=0.1.183-r69
+source_commit=4995cbbb9d1bfc623a0e65202477ad3efc0164d8
+source_tag=custom-v0.1.183-r69
+upstream_tag=v0.1.183
+target=linux/amd64
+go_version=go1.27.0
+build_tags=embed
+build_type=release
+size_bytes=125042848
+sha256=53be4d999268ac2c85542e4ed4d90a5c7258bb029b942781d1eb7d8ef8dbf708
+artifact=D:/Codex/Codex-VPS-Sub2api/builds/v183-r69/sub2api-0.1.183-r69-linux-amd64
+
+feature:
+- Supersedes deployed r68 and retains all previous downstream customizations.
+- Converts Codex Desktop agent_message history items to standard Responses
+  message items only on the Grok egress path.
+- Missing agent-message roles default to assistant.
+- Text is retained from content, message, or text; internal event fields such as
+  phase and memory_citation are not forwarded.
+- OpenAI traffic, stored Codex history, accounts, mappings, proxies, CC Switch,
+  and the 468,000-token Grok prompt budget are unchanged.
+
+diagnosis:
+- Real production retries created Ops #10211 through #10214.
+- xAI returned HTTP 422 because input[75] had unknown type agent_message.
+- xAI accepts message but does not include agent_message in its ModelInput
+  variants.
+- The previous r68 stale reasoning fix worked as designed; this was a separate
+  newly observed Codex history item type.
+
+verification:
+- Agent-message sanitizer and full Grok body-patching regression tests passed.
+- Targeted Grok model-input, replay, and prompt-budget tests passed.
+- Full backend go test ./... passed.
+- go vet ./... passed.
+- A production streaming request containing agent_message returned HTTP 200 and
+  GROK_R69_AGENT_OK.
+- A realistic 2,072,725-byte streaming Codex replay containing agent_message,
+  stale reasoning, and a complete tool pair returned HTTP 200 and
+  GROK_R69_REAL_422_OK.
+- The replay reduced 495,899 estimated tokens to 466,146 and removed 12 old
+  turns/24 items.
+- OpenAI gpt-5.6-sol production traffic continued returning HTTP 200.
+- No new Grok 422 Ops event was recorded after r69 deployment.
+
+deployment:
+- status=DEPLOYED
+- deployed_at=2026-08-30T14:18:31Z
+- active_binary=/opt/sub2api/sub2api
+- active_sha256=53be4d999268ac2c85542e4ed4d90a5c7258bb029b942781d1eb7d8ef8dbf708
+- previous_version=0.1.183-r68
+- rollback_binary=/opt/sub2api/releases/sub2api-0.1.183-r68.ready-20260830T1247Z
+- release_archive=/opt/sub2api/releases/sub2api-0.1.183-r69-linux-amd64.tar.gz
+- staging_dir=/opt/sub2api/releases/r69-stage-20260830T141831Z
+- health_status=200
+- service_restarts=0
+- small_agent_test_request_bytes=273
+- small_agent_test_result=GROK_R69_AGENT_OK
+- long_agent_test_request_bytes=2072725
+- long_agent_test_estimated_before=495899
+- long_agent_test_estimated_after=466146
+- long_agent_test_removed_turns=12
+- long_agent_test_removed_items=24
+- long_agent_test_duration_ms=113160
+- long_agent_test_result=GROK_R69_REAL_422_OK
+- vps_files_changed=true
+- vps_database_migrated=false
+- vps_service_restarted=true
