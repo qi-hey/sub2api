@@ -70,6 +70,24 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 			}
 			item = map[string]any{"type": "message", "role": role, "content": text}
 			itemType = "message"
+		case "agent_message":
+			if role == "" {
+				role = "assistant"
+			}
+			content, keep := sanitizeGrokMessageContent(firstNonNilGrokJSONValue(
+				item["content"],
+				item["message"],
+				item["text"],
+			))
+			if !keep {
+				continue
+			}
+			item = map[string]any{
+				"type":    "message",
+				"role":    role,
+				"content": content,
+			}
+			itemType = "message"
 		case "custom_tool_call", "tool_search_call":
 			originalType := itemType
 			item["type"] = "function_call"

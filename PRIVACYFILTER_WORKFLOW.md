@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.1.183`, released as
-`0.1.183-r68`. The upgrade retains all required downstream customizations in
+`0.1.183-r69`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.1.182` and
 `v0.1.183`, including:
 
@@ -34,6 +34,19 @@ this document and the upstream fixes accumulated through `v0.1.182` and
   variant is an object.
 
 No database migration was added between upstream `v0.1.181` and `v0.1.183`.
+
+### r69 Codex agent-message compatibility
+
+Branch `custom/v183-r69` supersedes r68. Codex Desktop can include historical
+progress events as Responses input items with `type: "agent_message"`. OpenAI
+accepts this internal item, but xAI's ModelInput decoder rejects it with HTTP
+422.
+
+r69 converts these items only on the Grok Responses egress path into standard
+`message` items. Missing roles default to `assistant`; text is retained from
+`content`, `message`, or `text`, while internal fields such as `phase` and
+`memory_citation` are removed. OpenAI forwarding and stored Codex session
+history remain unchanged.
 
 ### r68 real Codex reasoning replay fix
 
@@ -91,6 +104,9 @@ without importing or replacing it with another fork:
   visible summaries have been preserved as ordinary context messages;
 - Grok upstream error events include the configured bounded response-body
   detail, while request bodies and credentials remain excluded.
+- Codex `agent_message` history items are converted to standard assistant
+  messages only when forwarding to Grok, preventing xAI ModelInput HTTP 422
+  without changing OpenAI traffic or stored session history.
 
 For Grok 402, retain the downstream deterministic `schedulable=false` policy;
 do not regress to upstream's temporary cooldown-only behavior. Upstream

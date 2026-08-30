@@ -30,6 +30,50 @@ func TestSanitizeGrokResponsesModelInputNormalizesReplayHistory(t *testing.T) {
 	require.Equal(t, "completed", gjson.GetBytes(patched, "input.3.status").String())
 }
 
+func TestSanitizeGrokResponsesModelInputConvertsCodexAgentMessages(t *testing.T) {
+	body := []byte(`{
+		"input":[
+			{"type":"agent_message","message":"working on it","phase":"commentary","memory_citation":null},
+			{"type":"agent_message","role":"user","content":[{"type":"input_text","text":"continue"}],"phase":"final"},
+			{"type":"agent_message","message":"  "}
+		]
+	}`)
+
+	patched, err := sanitizeGrokResponsesModelInput(body)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(2), gjson.GetBytes(patched, "input.#").Int())
+	require.Equal(t, "message", gjson.GetBytes(patched, "input.0.type").String())
+	require.Equal(t, "assistant", gjson.GetBytes(patched, "input.0.role").String())
+	require.Equal(t, "working on it", gjson.GetBytes(patched, "input.0.content").String())
+	require.False(t, gjson.GetBytes(patched, "input.0.message").Exists())
+	require.False(t, gjson.GetBytes(patched, "input.0.phase").Exists())
+	require.False(t, gjson.GetBytes(patched, "input.0.memory_citation").Exists())
+	require.Equal(t, "message", gjson.GetBytes(patched, "input.1.type").String())
+	require.Equal(t, "user", gjson.GetBytes(patched, "input.1.role").String())
+	require.Equal(t, "continue", gjson.GetBytes(patched, "input.1.content.0.text").String())
+}
+
+func TestPatchGrokResponsesBodyConvertsCodexAgentMessagesBeforeForwarding(t *testing.T) {
+	body := []byte(`{
+		"model":"grok-4.6",
+		"stream":true,
+		"input":[
+			{"type":"message","role":"user","content":"start"},
+			{"type":"agent_message","message":"progress update","phase":"commentary"},
+			{"type":"message","role":"user","content":"continue"}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.6")
+
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(patched, `input.#(type=="agent_message")`).Exists())
+	require.Equal(t, "message", gjson.GetBytes(patched, "input.1.type").String())
+	require.Equal(t, "assistant", gjson.GetBytes(patched, "input.1.role").String())
+	require.Equal(t, "progress update", gjson.GetBytes(patched, "input.1.content").String())
+}
+
 func TestSanitizeGrokResponsesModelInputStripsOnlyNonPairCallIDs(t *testing.T) {
 	body := []byte(`{"input":[
 		{"type":"message","role":"user","call_id":"remove_message","content":"continue"},
