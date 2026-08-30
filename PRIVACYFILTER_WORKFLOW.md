@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.1.183`, released as
-`0.1.183-r63`. The upgrade retains all required downstream customizations in
+`0.1.183-r66`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.1.182` and
 `v0.1.183`, including:
 
@@ -35,14 +35,13 @@ this document and the upstream fixes accumulated through `v0.1.182` and
 
 No database migration was added between upstream `v0.1.181` and `v0.1.183`.
 
-### Local-only r66 candidate
+### Deployed r66 release
 
-Branch `custom/v183-r66` supersedes the local r65 candidate and remains based
-on the deployed `0.1.183-r63`. It must not be deployed until the owner
-explicitly schedules a post-quota-reset test. The VPS remains on
-`0.1.183-r63`.
+Branch `custom/v183-r66` supersedes the local r65 candidate and was deployed
+on August 30, 2026. The previous `0.1.183-r63` binary, configuration, systemd
+unit, and PostgreSQL database were backed up before the switch.
 
-The candidate retains the complete r65 Codex fingerprint convergence change
+The release retains the complete r65 Codex fingerprint convergence change
 without importing or replacing it with another fork:
 
 - the UI exposes only `off` and the recommended account-balanced `session`;

@@ -53,9 +53,24 @@ verification:
 - Binary inspection confirmed version 0.1.183-r66.
 
 deployment:
-- status=NOT_DEPLOYED
-- deployed_version_remains=0.1.183-r63
-- deploy_gate=explicit_owner_approval
-- vps_files_changed=false
-- vps_database_migrated=false
-- vps_service_restarted=false
+- status=DEPLOYED
+- deployed_at=2026-08-30T07:02:19Z
+- previous_version=0.1.183-r63
+- active_binary=/opt/sub2api/sub2api
+- active_sha256=011fd235a3820db806d06e474de9784d2508ba46a7312ccaeb8513c011b3d8da
+- rollback_binary=/opt/sub2api/releases/sub2api-0.1.183-r63.rollback-20260830T0702Z
+- backup=/opt/sub2api/backups/r63-before-r66-20260830T064512Z
+- backup_size=113M
+- backup_contents=r63_binary,config,environment,systemd_unit,postgresql_full_dump
+- migration=231_default_existing_openai_codex_fingerprint_balanced.sql
+- migrated_active_openai_oauth_accounts=2
+- health_status=200
+- service_restarts=0
+- direct_grok_test=GROK_R66_OK
+- direct_grok_account_id=32090
+- direct_grok_group_id=13
+- direct_grok_duration_ms=3702
+- post_deploy_grok_errors=0
+- vps_files_changed=true
+- vps_database_migrated=true
+- vps_service_restarted=true
