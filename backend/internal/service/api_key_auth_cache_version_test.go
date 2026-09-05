@@ -73,6 +73,8 @@ func TestAPIKeyService_MultiGroupAuthSnapshotRoundTrip(t *testing.T) {
 		SupportedModelScopes:            []string{"claude", "gemini_text"},
 		AllowMessagesDispatch:           true,
 		AllowLive:                       true,
+		ForceOpenAIFast:                 true,
+		FreeOpenAIFast:                  true,
 		DefaultMappedModel:              "grok-4.5",
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			OpusMappedModel: "grok-4.5",
@@ -84,8 +86,9 @@ func TestAPIKeyService_MultiGroupAuthSnapshotRoundTrip(t *testing.T) {
 			Enabled: true,
 			Models:  []string{"grok-4.5"},
 		},
-		RPMLimit:           120,
-		MaxReasoningEffort: "high",
+		RPMLimit:                    120,
+		MaxReasoningEffort:          "high",
+		MaxReasoningEffortOverLimit: ReasoningEffortOverLimitDeny,
 		ReasoningEffortMappings: []ReasoningEffortMapping{
 			{From: "max", To: "high"},
 		},
@@ -113,7 +116,7 @@ func TestAPIKeyService_MultiGroupAuthSnapshotRoundTrip(t *testing.T) {
 	svc := &APIKeyService{}
 	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
 	require.NotNil(t, snapshot)
-	require.Equal(t, 21, snapshot.Version)
+	require.Equal(t, 22, snapshot.Version)
 
 	roundTrip, used, err := svc.applyAuthCacheEntry(apiKey.Key, &APIKeyAuthCacheEntry{Snapshot: snapshot})
 	require.NoError(t, err)

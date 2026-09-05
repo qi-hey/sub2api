@@ -5,10 +5,10 @@ that must survive every upstream update.
 
 ## Current downstream release
 
-The current downstream base is upstream `v0.1.183`, released as
-`0.1.183-r69`. The upgrade retains all required downstream customizations in
-this document and the upstream fixes accumulated through `v0.1.182` and
-`v0.1.183`, including:
+The current downstream base is upstream `v0.2.0`, released as
+`0.2.0-r70`. The upgrade retains all required downstream customizations in
+this document and the upstream fixes accumulated through `v0.1.184`,
+`v0.1.185`, and `v0.2.0`, including:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
 - OpenAI incomplete-stream proxy quarantine (`47ad29db3`);
@@ -32,8 +32,48 @@ this document and the upstream fixes accumulated through `v0.1.182` and
   flattened into direct object variants. xAI accepts those variants but rejects
   a root branch that is itself another `oneOf`/`anyOf`, even when every nested
   variant is an object.
+- OpenAI group-level forced Fast and free-Fast billing policies;
+- model-scoped reasoning-effort mappings with deny-or-downgrade ceilings;
+- Kimi native Responses forwarding and Claude Fable 5.1;
+- scheduled automation and delegation bootstrap requests without call IDs;
+- WebSocket terminal-event validation, API-key cache identity fixes, and
+  scheduler passthrough projection fixes.
 
-No database migration was added between upstream `v0.1.181` and `v0.1.183`.
+Upstream `v0.2.0` adds group migrations for reasoning-effort policies and Fast:
+`232_group_reasoning_effort_over_limit.sql`,
+`232_group_force_openai_fast.sql`, and `233_group_free_openai_fast.sql`.
+They are additive and default both Fast switches to disabled, so the upgrade
+does not silently change existing groups or billing.
+
+### r70 upstream v0.2.0 integration
+
+Branch `custom/v200-r70` supersedes r69. It merges upstream `v0.2.0` without
+replacing the downstream Codex fingerprint implementation.
+
+The downstream API-key authentication snapshot remains multi-group aware and
+now carries `force_openai_fast`, `free_openai_fast`,
+`max_reasoning_effort_over_limit`, and model-scoped effort mappings for every
+bound group. Selecting another group on the same key therefore applies that
+group's own Fast and reasoning policy.
+
+OpenAI `service_tier: "fast"` remains a client alias for upstream
+`service_tier: "priority"`. Enabling **Force OpenAI Fast** on an OpenAI or
+composite group injects priority tier even when the client omits it. Enabling
+**Free OpenAI Fast** changes user billing to Standard price while preserving
+the actual upstream Fast request and operator cost accounting. Neither switch
+is enabled automatically during this upgrade.
+
+The required account-balanced fingerprint behavior remains:
+
+- only `off` and `session` are exposed to administrators;
+- new OpenAI OAuth and Setup Token accounts default to `session`;
+- existing valid per-account seeds are preserved;
+- legacy `device` and `full` normalize to `session`;
+- HTTP, passthrough, Compact headers, and WebSocket paths use the same resolved
+  account identity;
+- turn IDs and timestamps remain fresh, while installation/session IDs remain
+  account-stable and thread/window IDs remain real-session-stable;
+- explicit administrator `off` remains off after updates and restarts.
 
 ### r69 Codex agent-message compatibility
 
