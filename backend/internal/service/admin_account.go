@@ -469,6 +469,10 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		normalizedInput := *input
 		normalizedInput.Credentials = ApplyGrokCreateDefaults(input.Credentials)
 		input = &normalizedInput
+	} else if input.Platform == PlatformOpenAI {
+		normalizedInput := *input
+		normalizedInput.Credentials = ApplyOpenAICreateDefaults(input.Platform, input.Type, input.Credentials)
+		input = &normalizedInput
 	}
 
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)

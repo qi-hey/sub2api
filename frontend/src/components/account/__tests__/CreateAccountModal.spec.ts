@@ -502,6 +502,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       'gpt-5.6-luna': 'gpt-5.6-luna',
       'gpt-5.6-sol': 'gpt-5.6-sol',
       'gpt-5.6-terra': 'gpt-5.6-terra',
+      'gpt-6-astra': 'gpt-6-astra',
       'gpt-5.4': 'gpt-5.6-sol',
       'gpt-5.4-mini': 'gpt-5.5',
       'public-glm': 'glm-5.3'

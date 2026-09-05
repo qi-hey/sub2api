@@ -331,6 +331,22 @@ func TestFallbackPricing_OpenAIGPT55UsesOfficialPrices(t *testing.T) {
 	require.InDelta(t, 75e-6, pricing.OutputPricePerTokenPriority, 1e-12)
 }
 
+func TestFallbackPricing_OpenAIGPT6AstraUsesOfficialPrices(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing, err := svc.GetModelPricing("gpt-6-astra")
+	require.NoError(t, err)
+	require.InDelta(t, 10e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 50e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 1e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.InDelta(t, 12.5e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 20e-6, pricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 100e-6, pricing.OutputPricePerTokenPriority, 1e-12)
+	require.Equal(t, 272_000, pricing.LongContextInputThreshold)
+	require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
+	require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+}
+
 func TestFallbackPricing_OpenAIGPT55ProUsesOfficialPrices(t *testing.T) {
 	svc := newTestBillingService()
 

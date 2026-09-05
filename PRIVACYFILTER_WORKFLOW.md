@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.2.0`, released as
-`0.2.0-r70`. The upgrade retains all required downstream customizations in
+`0.2.0-r71`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.1.184`,
 `v0.1.185`, and `v0.2.0`, including:
 
@@ -44,6 +44,24 @@ Upstream `v0.2.0` adds group migrations for reasoning-effort policies and Fast:
 `232_group_force_openai_fast.sql`, and `233_group_free_openai_fast.sql`.
 They are additive and default both Fast switches to disabled, so the upgrade
 does not silently change existing groups or billing.
+
+### r71 GPT-6 Astra enablement
+
+Branch `custom/v200-r71` supersedes r70 and adds `gpt-6-astra` without changing
+the downstream fingerprint, Fast, Grok, game, or multi-group behavior.
+
+- Existing OpenAI OAuth and Setup Token accounts with explicit model mappings
+  receive `gpt-6-astra -> gpt-6-astra`; existing explicit Astra mappings win.
+- Missing or empty mappings remain unrestricted instead of becoming an
+  Astra-only whitelist.
+- Manual creation, batch creation, and CRS remote synchronization apply the
+  same default. OpenAI-compatible API key accounts remain untouched because
+  they may target non-OpenAI providers.
+- The admin model selector, Codex model catalog, and generated OpenCode config
+  expose GPT-6 Astra with low through max reasoning, image input, a 1.05M-token
+  maximum context window, and Fast/Priority support.
+- Embedded and fallback pricing use the official standard, cached-input,
+  cache-write, long-context, Batch/Flex, and 2x Fast rates.
 
 ### r70 upstream v0.2.0 integration
 

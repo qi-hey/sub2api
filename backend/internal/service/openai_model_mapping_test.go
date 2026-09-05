@@ -344,6 +344,8 @@ func TestResolveOpenAIErrorSchedulingModelPrefersActualUpstreamModel(t *testing.
 
 func TestNormalizeCodexModel(t *testing.T) {
 	cases := map[string]string{
+		"gpt-6-astra":               "gpt-6-astra",
+		"gpt-6-astra-max":           "gpt-6-astra",
 		"gpt-5.3-codex-spark":       "gpt-5.3-codex-spark",
 		"gpt-5.3-codex-spark-high":  "gpt-5.3-codex-spark",
 		"gpt-5.3-codex-spark-xhigh": "gpt-5.3-codex-spark",
@@ -369,6 +371,12 @@ func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 		model   string
 		want    string
 	}{
+		{
+			name:    "oauth preserves GPT-6 Astra",
+			account: &Account{Type: AccountTypeOAuth},
+			model:   "gpt-6-astra",
+			want:    "gpt-6-astra",
+		},
 		{
 			name:    "oauth routes bare GPT-5.6 alias to Sol",
 			account: &Account{Type: AccountTypeOAuth},

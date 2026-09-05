@@ -237,6 +237,8 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	}
 	if req.Platform == PlatformGrok {
 		req.Credentials = ApplyGrokCreateDefaults(req.Credentials)
+	} else if req.Platform == PlatformOpenAI {
+		req.Credentials = ApplyOpenAICreateDefaults(req.Platform, req.Type, req.Credentials)
 	}
 
 	// 创建账号

@@ -182,6 +182,19 @@ func TestApplyModelSpecificPricingPolicy_EnforcesOpenAIFastRatios(t *testing.T) 
 		}
 	})
 
+	t.Run("gpt-6-astra keeps 2x", func(t *testing.T) {
+		got := svc.applyModelSpecificPricingPolicy("gpt-6-astra", &ModelPricing{
+			InputPricePerToken:             10e-6,
+			InputPricePerTokenPriority:     20e-6,
+			OutputPricePerToken:            50e-6,
+			OutputPricePerTokenPriority:    100e-6,
+			CacheReadPricePerToken:         1e-6,
+			CacheReadPricePerTokenPriority: 2e-6,
+		})
+		require.InDelta(t, 20e-6, got.InputPricePerTokenPriority, 1e-12)
+		require.InDelta(t, 100e-6, got.OutputPricePerTokenPriority, 1e-12)
+	})
+
 	t.Run("missing priority prices are backfilled from standard", func(t *testing.T) {
 		got := svc.applyModelSpecificPricingPolicy("gpt-5.5", &ModelPricing{
 			InputPricePerToken:         5e-6,
@@ -240,6 +253,14 @@ func TestOpenAIFastBillingMultiplier_2xAnd25x(t *testing.T) {
 			CacheReadInputTokenCost:         0.5e-6,
 			CacheReadInputTokenCostPriority: 1e-6,
 		},
+		"gpt-6-astra": {
+			InputCostPerToken:               10e-6,
+			InputCostPerTokenPriority:       20e-6,
+			OutputCostPerToken:              50e-6,
+			OutputCostPerTokenPriority:      100e-6,
+			CacheReadInputTokenCost:         1e-6,
+			CacheReadInputTokenCostPriority: 2e-6,
+		},
 	}
 	billing := NewBillingService(&config.Config{}, &PricingService{pricingData: catalog})
 	tokens := UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000}
@@ -264,6 +285,7 @@ func TestOpenAIFastBillingMultiplier_2xAnd25x(t *testing.T) {
 		{model: "gpt-5.6-sol", ratio: 2.0},
 		{model: "gpt-5.6-terra", ratio: 2.0},
 		{model: "gpt-5.6-luna", ratio: 2.0},
+		{model: "gpt-6-astra", ratio: 2.0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.model+"/fast", func(t *testing.T) {
