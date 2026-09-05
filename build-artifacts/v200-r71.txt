@@ -1,0 +1,60 @@
+version=0.2.0-r71
+source_commit=dbf84f904e2a475e46f5f3de8324e6dc460e1be2
+source_tag=custom-v0.2.0-r71
+upstream_tag=v0.2.0
+target=linux/amd64
+go_version=go1.27.0
+build_tags=embed
+build_type=release
+size_bytes=125501600
+sha256=7d6cf38f4c382e4b9d526aec4ac9313ef26b114afe246770fdd91fd4df7b78ec
+artifact=D:/Codex/Codex-VPS-Sub2api/builds/v200-r71/sub2api-0.2.0-r71-linux-amd64
+
+downstream:
+- Added gpt-6-astra to the OpenAI account whitelist defaults and model picker.
+- Existing OpenAI OAuth/Setup Token accounts with explicit mappings receive
+  gpt-6-astra -> gpt-6-astra without overwriting an explicit Astra route.
+- Empty mappings remain allow-all instead of becoming Astra-only.
+- Manual creation, batch creation, and CRS remote synchronization share the
+  backend default; OpenAI-compatible API key accounts remain unchanged.
+- Added Codex/OpenCode catalog metadata for Astra: low through max reasoning,
+  image input, 1.05M maximum context, full Responses, and Fast/Priority.
+- Added official Astra standard, cache-read, cache-write, Batch/Flex,
+  long-context, and 2x Fast pricing.
+- Retained every r70 customization, including the downstream account-balanced
+  fingerprint implementation and persistent per-account seeds.
+
+verification:
+- Full backend go test ./... passed.
+- go vet ./... passed.
+- Full frontend suite passed: 269 files, 1,958 tests.
+- Frontend lint, typecheck, and production build passed.
+- Targeted account-default, migration, model alias, Codex catalog, max effort,
+  Fast pricing, and official pricing tests passed.
+- Production PostgreSQL migration was dry-run in a transaction first:
+  UPDATE 2, both target accounts gained Astra, then ROLLBACK restored 0.
+- Production Astra Fast request returned ASTRA_R71_FAST_OK with HTTP 200.
+- Usage log 130922 recorded requested/upstream/response model gpt-6-astra,
+  account 32087, service_tier=priority, reasoning=low, and exact 2x Fast cost.
+
+deployment:
+- status=DEPLOYED
+- deployed_at=2026-09-05T03:04:39Z
+- active_binary=/opt/sub2api/sub2api
+- active_sha256=7d6cf38f4c382e4b9d526aec4ac9313ef26b114afe246770fdd91fd4df7b78ec
+- previous_version=0.2.0-r70
+- rollback_binary=/opt/sub2api/backups/r70-before-r71-20260905T030401Z/sub2api-0.2.0-r70
+- database_backup=/opt/sub2api/backups/r70-before-r71-20260905T030401Z/sub2api-before-r71.dump
+- backup_size=196M
+- health_status=200
+- schema_migrations_before=291
+- schema_migrations_after=292
+- openai_accounts_updated=2
+- fingerprint_seed_changed=false
+- account_32086_seed_hash=960287e1823b24eaf3741cdef5d5aec9
+- account_32087_seed_hash=e9908b32468d1c7825ac4c92dfb3df1e
+- live_astra_http_status=200
+- live_astra_fast_service_tier=priority
+- vps_files_changed=true
+- vps_database_migrated=true
+- vps_service_restarted=true
