@@ -1,0 +1,80 @@
+version=0.2.1-r72
+source_commit=718bc03843716ea5dee6bd7a38e8e1be30c03095
+source_tag=custom-v0.2.1-r72
+upstream_tag=v0.2.1
+upstream_commit=578785ee7fb35030b094b69624efe25670a36f5f
+target=linux/amd64
+go_version=go1.27.0
+build_tags=embed
+build_type=release
+size_bytes=125735072
+sha256=235bc5c5d7182dca4859e1e91c5b4734488ca02f4cd265bbde8755d0ddf7f1ef
+artifact=D:/Codex/Codex-VPS-Sub2api/builds/v021-r72/sub2api-0.2.1-r72-linux-amd64
+
+upstream:
+- Added official GPT-6/GPT-6 Astra aliases, capability synchronization,
+  continuation persistence, message prompt caching, and metadata completion.
+- Added Codex Ultrafast service tier and pinned-account Codex model manifests.
+- Added compact admin account lists, upstream request-ID persistence, image URL
+  to b64_json backfill, Anthropic max-effort pricing, Claude CLI-version
+  override, pricing-file hot reload, and multiple gateway/WebSocket fixes.
+
+downstream:
+- Retained the account-balanced Codex fingerprint implementation byte-for-byte,
+  including per-account persistent seeds, HTTP/passthrough/Compact/WebSocket
+  parity, fresh turn IDs, and migrations 225 and 231.
+- Retained multi-group API keys, OpenAI-first bound-group Grok fallback,
+  privacyfilter, games, group proxy binding, Forbidden maintenance, Grok
+  history/schema compatibility, and all custom account defaults.
+- API-key auth snapshot version 23 now carries codex_models_manifest_config for
+  every bound group without losing existing Fast, pricing, RPM, reasoning,
+  profit-control, or fallback fields.
+- Added the public gpt-6 alias alongside gpt-6-astra without treating unknown
+  bare gpt6 requests as Astra.
+- GPT-6 Astra keeps low through max reasoning, 1.05M context, image input, and
+  Fast/Priority. Ultrafast remains a service tier for GPT-5.6 Sol and is not
+  confused with the downstream ultra reasoning option.
+
+verification:
+- Full backend go test ./... passed.
+- go vet ./... passed.
+- Full frontend suite passed: 272 files, 1,990 tests.
+- Frontend lint, typecheck, and production build passed.
+- All 219 downstream-added files from r71 remain present.
+- Critical fingerprint implementation, lifecycle tests, and migrations are
+  unchanged from custom/v200-r71.
+- Embedded Linux binary contains version 0.2.1-r72 and build tag embed.
+- Live GPT-5.6 Sol Standard returned HTTP 200 (usage 132963).
+- Live GPT-5.6 Sol Ultrafast returned HTTP 200 and recorded
+  service_tier=ultrafast (usage 132964).
+- Live GPT-6 Astra Fast returned HTTP 200 and recorded service_tier=priority
+  (usage 132965).
+- Live Grok-4.6 automation_update-style root anyOf tool schema returned HTTP
+  200 through account 32090/group 13 (usage 132972).
+- Root frontend and health endpoints both returned HTTP 200.
+
+deployment:
+- status=DEPLOYED
+- deployed_at=2026-09-07T14:10:25Z
+- active_binary=/opt/sub2api/sub2api
+- active_sha256=235bc5c5d7182dca4859e1e91c5b4734488ca02f4cd265bbde8755d0ddf7f1ef
+- release_binary=/opt/sub2api/releases/sub2api-0.2.1-r72-235bc5c5
+- previous_version=0.2.0-r71
+- rollback_binary=/opt/sub2api/backups/r71-before-r72-20260907T140151Z/sub2api-0.2.0-r71
+- database_backup=/opt/sub2api/backups/r71-before-r72-20260907T140151Z/sub2api-before-r72.dump
+- backup_size=196M
+- database_backup_size_bytes=79585537
+- health_status=200
+- root_status=200
+- schema_migrations_before=292
+- schema_migrations_after=296
+- fingerprint_seed_changed=false
+- account_32086_mode=session
+- account_32086_seed_hash=960287e1823b24eaf3741cdef5d5aec9
+- account_32087_mode=session
+- account_32087_seed_hash=e9908b32468d1c7825ac4c92dfb3df1e
+- existing_groups_long_context_enabled=13/13
+- service_restarts_after_deploy=0
+- vps_files_changed=true
+- vps_database_migrated=true
+- vps_service_restarted=true
