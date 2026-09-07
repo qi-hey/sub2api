@@ -5,10 +5,9 @@ that must survive every upstream update.
 
 ## Current downstream release
 
-The current downstream base is upstream `v0.2.0`, released as
-`0.2.0-r71`. The upgrade retains all required downstream customizations in
-this document and the upstream fixes accumulated through `v0.1.184`,
-`v0.1.185`, and `v0.2.0`, including:
+The current downstream base is upstream `v0.2.1`, released as
+`0.2.1-r72`. The upgrade retains all required downstream customizations in
+this document and the upstream fixes accumulated through `v0.2.1`, including:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
 - OpenAI incomplete-stream proxy quarantine (`47ad29db3`);
@@ -38,12 +37,50 @@ this document and the upstream fixes accumulated through `v0.1.184`,
 - scheduled automation and delegation bootstrap requests without call IDs;
 - WebSocket terminal-event validation, API-key cache identity fixes, and
   scheduler passthrough projection fixes.
+- official GPT-6/GPT-6 Astra aliases, capability synchronization, continuation
+  persistence, prompt caching, and Codex model metadata completion;
+- Codex `ultrafast` service-tier support for GPT-5.6 Sol and pinned-account
+  Codex model manifests for OpenAI groups;
+- compact admin account-list responses, upstream request-ID persistence,
+  image URL-to-`b64_json` backfill, and pricing-file hot reload;
+- Anthropic max-effort pricing controls, advertised CLI-version override, and
+  additional request, routing, WebSocket, billing, and tool-history fixes.
 
 Upstream `v0.2.0` adds group migrations for reasoning-effort policies and Fast:
 `232_group_reasoning_effort_over_limit.sql`,
 `232_group_force_openai_fast.sql`, and `233_group_free_openai_fast.sql`.
 They are additive and default both Fast switches to disabled, so the upgrade
 does not silently change existing groups or billing.
+
+### r72 upstream v0.2.1 integration
+
+Branch `custom/v021-r72` supersedes r71 and merges upstream `v0.2.1`.
+The downstream account-balanced Codex fingerprint implementation is retained
+byte-for-byte, including its seed lifecycle and migrations:
+
+- `openai_codex_fingerprint.go`;
+- `openai_codex_identity.go`;
+- `openai_codex_account_identity.go`;
+- `225_backfill_codex_fingerprint_seed.sql`;
+- `231_default_existing_openai_codex_fingerprint_balanced.sql`.
+
+The API-key authentication snapshot remains multi-group aware and is bumped to
+version 23 so every bound group also carries upstream
+`codex_models_manifest_config`. Selecting a non-default group therefore keeps
+that group's Fast, reasoning, pricing, profit-control, RPM, fallback, and pinned
+manifest settings.
+
+Both public `gpt-6` and concrete `gpt-6-astra` model IDs are advertised and
+normalize to Astra for routing and pricing. Astra retains low through max
+reasoning, a 1.05M-token context window, image input, and Fast/Priority. The
+upstream `ultrafast` service tier is advertised only for GPT-5.6 Sol; it is
+separate from the downstream `ultra` reasoning option.
+
+New upstream features are additive. Pinned-account manifests, image URL
+backfill, upstream request-ID capture, Claude CLI-version override, and
+max-effort pricing remain disabled or unset unless an administrator configures
+them. Existing groups, accounts, keys, games, proxy bindings, and fingerprint
+seeds are not bulk-rewritten by this release.
 
 ### r71 GPT-6 Astra enablement
 
@@ -571,13 +608,14 @@ Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.
 - `privacyfilter-v137`: the original privacyfilter patch extracted from the VPS build.
-- `custom/v183-r63`: current deployable downstream branch.
-- `custom-v0.1.183-r63`: immutable source tag for the current downstream release.
+- `custom/v021-r72`: current deployable downstream branch.
+- `custom-v0.2.1-r72`: immutable source tag for the current downstream release.
 
 Update to a new upstream tag:
 
 ```powershell
-.\scripts\update-upstream.ps1 v0.1.138
+git fetch upstream --tags
+git merge --no-ff --no-commit v0.2.1
 ```
 
 Then verify and push:
