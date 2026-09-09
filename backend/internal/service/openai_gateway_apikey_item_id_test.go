@@ -117,6 +117,39 @@ func TestOpenAIGatewayService_OAuthPassthrough_SanitizesNativeToolItemIDs(t *tes
 	}
 }
 
+func TestOpenAIGatewayService_OAuthPassthrough_StripsOverlongGrokToolItemID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamSSE := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"model\":\"gpt-6-astra\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\ndata: [DONE]\n\n"
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+	}}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.150.0")
+	account := newOpenAIImageGenerationControlTestAccount()
+	account.Type = AccountTypeOAuth
+	account.Credentials = map[string]any{
+		"access_token":       "oauth-token",
+		"chatgpt_account_id": "chatgpt-account",
+	}
+	account.Extra = map[string]any{"openai_passthrough": true}
+	overlongID := "ctc_" + strings.Repeat("x", 80)
+	body := []byte(`{"model":"gpt-6-astra","stream":true,"input":[` +
+		`{"type":"custom_tool_call","id":"` + overlongID + `","call_id":"call_long","name":"apply_patch","input":"patch"},` +
+		`{"type":"custom_tool_call_output","call_id":"call_long","output":"done"}` +
+		`]}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.id").Exists())
+	require.Equal(t, "call_long", gjson.GetBytes(upstream.lastBody, "input.0.call_id").String())
+	require.Equal(t, "done", gjson.GetBytes(upstream.lastBody, "input.1.output").String())
+}
+
 func TestOpenAIGatewayService_SetupTokenLegacy_SanitizesAndTransforms(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstreamSSE := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"model\":\"gpt-5.6-sol\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\ndata: [DONE]\n\n"

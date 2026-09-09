@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -92,6 +93,29 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_SanitizesNativeItemI
 		// Native Responses call_id values are correlation keys, not item IDs.
 		require.Equal(t, "call_custom_1", gjson.GetBytes(normalized, "input.0.call_id").String())
 		require.Equal(t, "call_search_1", gjson.GetBytes(normalized, "input.2.call_id").String())
+	}
+}
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_StripsOverlongGrokToolItemID(t *testing.T) {
+	overlongID := "ctc_" + strings.Repeat("x", 80)
+	body := []byte(`{"type":"response.create","model":"gpt-6-astra","input":[` +
+		`{"type":"custom_tool_call","id":"` + overlongID + `","call_id":"call_long","name":"apply_patch","input":"patch"},` +
+		`{"type":"custom_tool_call_output","call_id":"call_long","output":"done"}` +
+		`]}`)
+
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth, AccountTypeSetupToken} {
+		t.Run(accountType, func(t *testing.T) {
+			normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+				Platform: PlatformOpenAI,
+				Type:     accountType,
+			}, false)
+
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.False(t, gjson.GetBytes(normalized, "input.0.id").Exists())
+			require.Equal(t, "call_long", gjson.GetBytes(normalized, "input.0.call_id").String())
+			require.Equal(t, "done", gjson.GetBytes(normalized, "input.1.output").String())
+		})
 	}
 }
 

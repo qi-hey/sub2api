@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.2.1`, released as
-`0.2.1-r72`. The upgrade retains all required downstream customizations in
+`0.2.1-r73`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.2.1`, including:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
@@ -45,12 +45,28 @@ this document and the upstream fixes accumulated through `v0.2.1`, including:
   image URL-to-`b64_json` backfill, and pricing-file hot reload;
 - Anthropic max-effort pricing controls, advertised CLI-version override, and
   additional request, routing, WebSocket, billing, and tool-history fixes.
+- Grok-to-OpenAI conversation switching removes only replay item IDs that
+  exceed OpenAI's 64-character limit. Tool content, `call_id` pairs, outputs,
+  conversation history, routing, and account fingerprints remain unchanged.
 
 Upstream `v0.2.0` adds group migrations for reasoning-effort policies and Fast:
 `232_group_reasoning_effort_over_limit.sql`,
 `232_group_force_openai_fast.sql`, and `233_group_free_openai_fast.sql`.
 They are additive and default both Fast switches to disabled, so the upgrade
 does not silently change existing groups or billing.
+
+### r73 Grok-to-OpenAI replay compatibility
+
+Branch `custom/v021-r73` supersedes r72. Grok/xAI may return valid-prefix tool
+item IDs longer than the OpenAI Responses API maximum of 64 characters. When
+that conversation later switches to GPT, OpenAI rejects the replay before
+sampling.
+
+The shared OpenAI HTTP and WebSocket request sanitizer now removes only an
+overlong constrained `input[].id` before forwarding to OpenAI. It does not
+fabricate a replacement ID and does not alter `call_id`, tool payloads, tool
+outputs, messages, model selection, group routing, Fast, reasoning effort, or
+fingerprint state. Valid GPT replay bodies remain byte-identical.
 
 ### r72 upstream v0.2.1 integration
 
@@ -608,8 +624,8 @@ Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.
 - `privacyfilter-v137`: the original privacyfilter patch extracted from the VPS build.
-- `custom/v021-r72`: current deployable downstream branch.
-- `custom-v0.2.1-r72`: immutable source tag for the current downstream release.
+- `custom/v021-r73`: current deployable downstream branch.
+- `custom-v0.2.1-r73`: immutable source tag for the current downstream release.
 
 Update to a new upstream tag:
 

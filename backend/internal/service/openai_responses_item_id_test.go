@@ -2,6 +2,7 @@ package service
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,8 @@ func TestOpenAIResponsesInputItemIDPrefixUsesObservedOutputContracts(t *testing.
 		{itemType: "mcp_tool_call", id: "fc_123", strip: false},
 		{itemType: "custom_tool_call", id: "ctc_123", strip: false},
 		{itemType: "custom_tool_call", id: "fc_123", strip: true},
+		{itemType: "custom_tool_call", id: "ctc_" + strings.Repeat("x", 60), strip: false},
+		{itemType: "custom_tool_call", id: "ctc_" + strings.Repeat("x", 80), strip: true},
 		{itemType: "tool_search_call", id: "tsc_123", strip: false},
 		{itemType: "tool_search_call", id: "fc_123", strip: true},
 		{itemType: "web_search_call", id: "ws_123", strip: false},
@@ -43,6 +46,51 @@ func TestOpenAIResponsesInputItemIDPrefixUsesObservedOutputContracts(t *testing.
 			require.Equal(t, tt.strip, shouldStripOpenAIResponsesInputItemID(tt.itemType, tt.id))
 		})
 	}
+}
+
+func TestSanitizeOpenAIResponsesInputItemIDsStripsOverlongGrokToolID(t *testing.T) {
+	overlongID := "ctc_" + strings.Repeat("x", 80)
+	boundaryID := "ctc_" + strings.Repeat("y", 60)
+	require.Len(t, overlongID, 84)
+	require.Len(t, boundaryID, openAIResponsesInputItemIDMaxLength)
+
+	body := []byte(`{"input":[` +
+		`{"type":"custom_tool_call","id":"` + overlongID + `","call_id":"call_long","name":"apply_patch","input":"patch"},` +
+		`{"type":"custom_tool_call_output","call_id":"call_long","output":"done"},` +
+		`{"type":"custom_tool_call","id":"` + boundaryID + `","call_id":"call_boundary","name":"apply_patch","input":"keep"}` +
+		`]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesInputItemIDs(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(sanitized, "input.0.id").Exists())
+	require.Equal(t, "call_long", gjson.GetBytes(sanitized, "input.0.call_id").String())
+	require.Equal(t, "patch", gjson.GetBytes(sanitized, "input.0.input").String())
+	require.Equal(t, "done", gjson.GetBytes(sanitized, "input.1.output").String())
+	require.Equal(t, boundaryID, gjson.GetBytes(sanitized, "input.2.id").String())
+
+	second, changedAgain, err := sanitizeOpenAIResponsesInputItemIDs(sanitized)
+	require.NoError(t, err)
+	require.False(t, changedAgain)
+	require.Equal(t, sanitized, second)
+}
+
+func TestSanitizeOpenAIResponsesInputItemIDsLeavesValidGPTReplayByteIdentical(t *testing.T) {
+	body := []byte(`{"model":"gpt-6-astra","stream":true,"input":[` +
+		`{"type":"message","id":"msg_valid","role":"user","content":[{"type":"input_text","text":"hello"}]},` +
+		`{"type":"reasoning","id":"rs_valid","summary":[]},` +
+		`{"type":"function_call","id":"fc_valid","call_id":"call_valid","name":"lookup","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"call_valid","output":"ok"},` +
+		`{"type":"custom_tool_call","id":"ctc_valid","call_id":"call_custom","name":"apply_patch","input":"patch"},` +
+		`{"type":"custom_tool_call_output","call_id":"call_custom","output":"done"}` +
+		`]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesInputItemIDs(body)
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, body, sanitized)
 }
 
 func TestSanitizeOpenAIResponsesInputItemIDsDoesNotCascadeAcrossIDNamespaces(t *testing.T) {

@@ -8,6 +8,8 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+const openAIResponsesInputItemIDMaxLength = 64
+
 func openAIResponsesInputItemIDPrefix(itemType string) (string, bool) {
 	switch strings.TrimSpace(itemType) {
 	case "message":
@@ -44,13 +46,17 @@ func openAIResponsesToolCallIDPrefix(itemType string) string {
 }
 
 // Invalid replayed IDs are removed rather than rewritten because a fabricated
-// ID may point at a different upstream object.
+// ID may point at a different upstream object. xAI can emit otherwise valid
+// tool item IDs longer than OpenAI's 64-character input limit, so those IDs
+// must also be removed when a Grok conversation switches back to OpenAI.
 func shouldStripOpenAIResponsesInputItemID(itemType, id string) bool {
 	prefix, constrained := openAIResponsesInputItemIDPrefix(itemType)
 	if !constrained {
 		return false
 	}
-	return id == "" || !strings.HasPrefix(id, prefix)
+	return id == "" ||
+		len(id) > openAIResponsesInputItemIDMaxLength ||
+		!strings.HasPrefix(id, prefix)
 }
 
 func shouldStripOpenAIResponsesNonPairCallID(itemType string) bool {
