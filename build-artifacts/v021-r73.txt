@@ -1,0 +1,66 @@
+version=0.2.1-r73
+source_commit=6b2c90ba73c292a680296f2d27ade19c5a957ea4
+source_tag=custom-v0.2.1-r73
+upstream_tag=v0.2.1
+upstream_commit=578785ee7fb35030b094b69624efe25670a36f5f
+target=linux/amd64
+go_version=go1.27.0
+build_tags=embed
+build_type=release
+size_bytes=125735072
+sha256=972880a8be80e9dbe480f7710e13db5e1dc5bc6b9327e5ba26b7abc41f62e0ff
+artifact=D:/Codex/Codex-VPS-Sub2api/builds/v021-r73/sub2api-0.2.1-r73-linux-amd64
+
+fix:
+- Grok/xAI may emit valid-prefix Responses tool item IDs longer than OpenAI's
+  64-character replay limit. Switching that conversation to GPT previously
+  failed before sampling with Invalid input[n].id.
+- Before forwarding to an OpenAI OAuth, Setup Token, or API-key account, the
+  shared HTTP and WebSocket sanitizer now removes only a constrained
+  input[].id whose length exceeds 64 characters.
+- The fix does not fabricate replacement IDs and does not alter call_id pairs,
+  tool content, tool outputs, messages, model selection, routing, Fast,
+  reasoning effort, or account fingerprints.
+- Valid GPT replay payloads remain byte-identical.
+
+verification:
+- Full backend go test ./... passed.
+- go vet ./... passed.
+- Final focused HTTP, WebSocket, overlong-ID, and valid-GPT no-op tests passed
+  for 20 consecutive runs.
+- Critical downstream fingerprint implementation, lifecycle migrations, and
+  per-account seed behavior are unchanged from custom/v021-r72.
+- Embedded Linux binary reports version 0.2.1-r73 and build tag embed.
+- Live normal GPT-6 Astra non-stream request returned HTTP 200.
+- Live GPT-6 Astra non-stream request containing an 84-character historical
+  custom_tool_call ID returned HTTP 200.
+- Live GPT-6 Astra streaming request containing an 84-character historical
+  custom_tool_call ID returned HTTP 200, one response.completed event, and no
+  response.failed or non-null error event.
+
+deployment:
+- status=DEPLOYED
+- deployed_at=2026-09-09T13:29:15Z
+- active_binary=/opt/sub2api/sub2api
+- active_sha256=972880a8be80e9dbe480f7710e13db5e1dc5bc6b9327e5ba26b7abc41f62e0ff
+- release_binary=/opt/sub2api/releases/sub2api-0.2.1-r73-972880a8
+- previous_version=0.2.1-r72
+- rollback_binary=/opt/sub2api/backups/r72-before-r73-20260909T132217Z/sub2api-0.2.1-r72
+- database_backup=/opt/sub2api/backups/r72-before-r73-20260909T132217Z/sub2api-before-r73.dump
+- backup_total_bytes=206550997
+- database_backup_size_bytes=80814613
+- health_status=200
+- root_status=200
+- schema_migrations_before=296
+- schema_migrations_after=296
+- fingerprint_seed_changed=false
+- account_32086_mode=session
+- account_32086_seed_hash=960287e1823b24eaf3741cdef5d5aec9
+- account_32087_mode=session
+- account_32087_seed_hash=e9908b32468d1c7825ac4c92dfb3df1e
+- service_restarts_after_deploy=0
+- post_deploy_overlong_id_errors=0
+- post_deploy_fatal_errors=0
+- vps_files_changed=true
+- vps_database_migrated=false
+- vps_service_restarted=true
