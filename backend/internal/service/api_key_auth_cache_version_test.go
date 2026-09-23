@@ -82,7 +82,7 @@ func TestAPIKeyService_MultiGroupAuthSnapshotRoundTrip(t *testing.T) {
 				"claude-opus-4-8": "grok-4.5",
 			},
 		},
-		ModelsListConfig: GroupModelsListConfig{
+		ModelAllowlist: GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"grok-4.5"},
 		},
@@ -116,7 +116,7 @@ func TestAPIKeyService_MultiGroupAuthSnapshotRoundTrip(t *testing.T) {
 	svc := &APIKeyService{}
 	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
 	require.NotNil(t, snapshot)
-	require.Equal(t, 23, snapshot.Version)
+	require.Equal(t, apiKeyAuthSnapshotVersion, snapshot.Version)
 
 	roundTrip, used, err := svc.applyAuthCacheEntry(apiKey.Key, &APIKeyAuthCacheEntry{Snapshot: snapshot})
 	require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestAPIKeyAuthSnapshotWriteAndReadAreDeeplyIsolated(t *testing.T) {
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			ExactModelMappings: map[string]string{"claude": "gpt"},
 		},
-		ModelsListConfig: GroupModelsListConfig{Models: []string{"gpt"}},
+		ModelAllowlist: GroupModelAllowlist{Models: []string{"gpt"}},
 	}
 	apiKey := &APIKey{
 		ID:                1,
@@ -190,7 +190,7 @@ func TestAPIKeyAuthSnapshotWriteAndReadAreDeeplyIsolated(t *testing.T) {
 	apiKey.Group.ModelRouting["gpt-*"][0] = 99
 	apiKey.Group.SupportedModelScopes[0] = "source-mutated"
 	apiKey.Group.MessagesDispatchModelConfig.ExactModelMappings["claude"] = "source-mutated"
-	apiKey.Group.ModelsListConfig.Models[0] = "source-mutated"
+	apiKey.Group.ModelAllowlist.Models[0] = "source-mutated"
 	*apiKey.Group.DailyLimitUSD = 99
 	*apiKey.Group.FallbackGroupID = 99
 
@@ -204,7 +204,7 @@ func TestAPIKeyAuthSnapshotWriteAndReadAreDeeplyIsolated(t *testing.T) {
 	require.Equal(t, int64(1), snapshot.Group.ModelRouting["gpt-*"][0])
 	require.Equal(t, "claude", snapshot.Group.SupportedModelScopes[0])
 	require.Equal(t, "gpt", snapshot.Group.MessagesDispatchModelConfig.ExactModelMappings["claude"])
-	require.Equal(t, "gpt", snapshot.Group.ModelsListConfig.Models[0])
+	require.Equal(t, "gpt", snapshot.Group.ModelAllowlist.Models[0])
 	require.Equal(t, 10.0, *snapshot.Group.DailyLimitUSD)
 	require.Equal(t, int64(20), *snapshot.Group.FallbackGroupID)
 
@@ -219,7 +219,7 @@ func TestAPIKeyAuthSnapshotWriteAndReadAreDeeplyIsolated(t *testing.T) {
 	first.Group.ModelRouting["gpt-*"][0] = 88
 	first.Group.SupportedModelScopes[0] = "first-mutated"
 	first.Group.MessagesDispatchModelConfig.ExactModelMappings["claude"] = "first-mutated"
-	first.Group.ModelsListConfig.Models[0] = "first-mutated"
+	first.Group.ModelAllowlist.Models[0] = "first-mutated"
 	*first.Group.DailyLimitUSD = 88
 	*first.Group.FallbackGroupID = 88
 
@@ -238,7 +238,7 @@ func TestAPIKeyAuthSnapshotWriteAndReadAreDeeplyIsolated(t *testing.T) {
 	require.Equal(t, int64(1), second.Group.ModelRouting["gpt-*"][0])
 	require.Equal(t, "claude", second.Group.SupportedModelScopes[0])
 	require.Equal(t, "gpt", second.Group.MessagesDispatchModelConfig.ExactModelMappings["claude"])
-	require.Equal(t, "gpt", second.Group.ModelsListConfig.Models[0])
+	require.Equal(t, "gpt", second.Group.ModelAllowlist.Models[0])
 	require.Equal(t, 10.0, *second.Group.DailyLimitUSD)
 	require.Equal(t, int64(20), *second.Group.FallbackGroupID)
 }
@@ -253,7 +253,7 @@ func TestAPIKeyService_RejectsV15AuthSnapshotWithoutMultiGroupBindings(t *testin
 	require.Nil(t, apiKey)
 }
 
-func TestAPIKeyService_RejectsV10AuthSnapshotWithoutModelsListConfig(t *testing.T) {
+func TestAPIKeyService_RejectsV10AuthSnapshotWithoutModelAllowlist(t *testing.T) {
 	groupID := int64(9)
 	svc := &APIKeyService{}
 
@@ -286,7 +286,7 @@ func TestAPIKeyService_RejectsV10AuthSnapshotWithoutModelsListConfig(t *testing.
 		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
 	}
 	if ok {
-		t.Fatalf("expected v10 auth snapshot to be rejected after models_list_config was added")
+		t.Fatalf("expected v10 auth snapshot to be rejected after model_allowlist was added")
 	}
 	if apiKey != nil {
 		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)

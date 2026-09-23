@@ -5,9 +5,9 @@ that must survive every upstream update.
 
 ## Current downstream release
 
-The current downstream base is upstream `v0.2.1`, released as
-`0.2.1-r73`. The upgrade retains all required downstream customizations in
-this document and the upstream fixes accumulated through `v0.2.1`, including:
+The current downstream base is upstream `v0.2.8`, released as
+`0.2.8-r74`. The upgrade retains all required downstream customizations in
+this document and the upstream fixes accumulated through `v0.2.8`, including:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
 - OpenAI incomplete-stream proxy quarantine (`47ad29db3`);
@@ -48,12 +48,55 @@ this document and the upstream fixes accumulated through `v0.2.1`, including:
 - Grok-to-OpenAI conversation switching removes only replay item IDs that
   exceed OpenAI's 64-character limit. Tool content, `call_id` pairs, outputs,
   conversation history, routing, and account fingerprints remain unchanged.
+- GPT-6 Sol and GPT-6 Luna routing, pricing, Fast/Priority, model aliases,
+  Codex/OpenCode catalogs, and 1.05M upstream capability metadata;
+- group model allowlists, reasoning-effort billing multipliers, OpenCode Go,
+  Grok 4.7, Claude Opus 5.5, simple-mode key windows, monthly backup archives,
+  HTTP/2 keepalive fixes, and the upstream WebSocket/context corrections.
 
-Upstream `v0.2.0` adds group migrations for reasoning-effort policies and Fast:
+Upstream `v0.2.0` added group migrations for reasoning-effort policies and Fast:
 `232_group_reasoning_effort_over_limit.sql`,
 `232_group_force_openai_fast.sql`, and `233_group_free_openai_fast.sql`.
 They are additive and default both Fast switches to disabled, so the upgrade
 does not silently change existing groups or billing.
+
+### r74 upstream v0.2.8 integration
+
+Branch `custom/v028-r74` supersedes r73 and integrates upstream `v0.2.8`.
+The downstream account-balanced Codex fingerprint modes, seed derivation,
+persistent per-account identity, and both seed lifecycle migrations remain
+the r73 implementation:
+
+- `openai_codex_fingerprint.go`;
+- `openai_codex_identity.go`;
+- `openai_codex_account_identity.go`;
+- `225_backfill_codex_fingerprint_seed.sql`;
+- `231_default_existing_openai_codex_fingerprint_balanced.sql`.
+
+Two protocol-safety integrations from v0.2.8 are applied around that retained
+implementation: embedded turn metadata is marshalled as header-safe ASCII JSON,
+and canonical/candidate Codex User-Agent values are validated before trimming.
+Neither change alters fingerprint seeds, installation/session/thread/turn ID
+derivation, prompt-cache identity, mode defaults, or persistence.
+
+The API-key authentication snapshot remains multi-group aware and is version
+25. Every bound group retains its model allowlist, Fast, reasoning, pricing,
+profit-control, RPM, fallback, long-context, and pinned-manifest settings when
+the same API key selects another group.
+
+GPT-6 Sol and GPT-6 Luna are included in the compact default whitelist for new
+official OpenAI OAuth and Setup Token accounts. Migration
+`241_add_gpt6_sol_luna_openai_defaults.sql` adds identity mappings to existing
+official accounts only when they already use a non-empty explicit mapping.
+Missing or empty mappings remain unrestricted, and existing account-specific
+Sol/Luna mappings always win. OpenAI-compatible API-key accounts remain
+untouched.
+
+All downstream features remain present: games and separate game pools, points
+and rewards, multi-group API keys, group-based proxy binding, Grok defaults and
+fallbacks, forbidden-account cleanup, custom home UI, PrivacyFilter, security
+audit integration, OpenAI passthrough controls, long-context billing, and the
+custom Codex fingerprint modes and seed behavior.
 
 ### r73 Grok-to-OpenAI replay compatibility
 
@@ -624,14 +667,14 @@ Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.
 - `privacyfilter-v137`: the original privacyfilter patch extracted from the VPS build.
-- `custom/v021-r73`: current deployable downstream branch.
-- `custom-v0.2.1-r73`: immutable source tag for the current downstream release.
+- `custom/v028-r74`: current deployable downstream branch.
+- `custom-v0.2.8-r74`: immutable source tag for the current downstream release.
 
 Update to a new upstream tag:
 
 ```powershell
 git fetch upstream --tags
-git merge --no-ff --no-commit v0.2.1
+git merge --no-ff --no-commit v0.2.8
 ```
 
 Then verify and push:

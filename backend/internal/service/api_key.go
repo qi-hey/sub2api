@@ -181,7 +181,7 @@ func cloneAPIKeyGroup(source *Group) *Group {
 	clone.ModelRouting = cloneAPIKeyModelRouting(source.ModelRouting)
 	clone.SupportedModelScopes = append([]string(nil), source.SupportedModelScopes...)
 	clone.MessagesDispatchModelConfig = cloneAPIKeyMessagesDispatchModelConfig(source.MessagesDispatchModelConfig)
-	clone.ModelsListConfig.Models = append([]string(nil), source.ModelsListConfig.Models...)
+	clone.ModelAllowlist.Models = append([]string(nil), source.ModelAllowlist.Models...)
 	clone.AccountGroups = append([]AccountGroup(nil), source.AccountGroups...)
 	return &clone
 }

@@ -19,7 +19,15 @@ describe('useModelWhitelist', () => {
     const defaults = getCreateAccountModelRestrictionDefaults('openai')
 
     expect(defaults).toEqual({
-      allowedModels: ['gpt-5.5', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-astra'],
+      allowedModels: [
+        'gpt-5.5',
+        'gpt-5.6-luna',
+        'gpt-5.6-sol',
+        'gpt-5.6-terra',
+        'gpt-6-astra',
+        'gpt-6-sol',
+        'gpt-6-luna'
+      ],
       modelMappings: [
         { from: 'gpt-5.4', to: 'gpt-5.5' },
         { from: 'gpt-5.4-mini', to: 'gpt-5.5' },
@@ -42,6 +50,8 @@ describe('useModelWhitelist', () => {
         'gpt-5.6-sol': 'gpt-5.6-sol',
         'gpt-5.6-terra': 'gpt-5.6-terra',
         'gpt-6-astra': 'gpt-6-astra',
+        'gpt-6-sol': 'gpt-6-sol',
+        'gpt-6-luna': 'gpt-6-luna',
         'gpt-5.4': 'gpt-5.5',
         'gpt-5.4-mini': 'gpt-5.5'
       },
@@ -137,6 +147,8 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gpt-5.6')
     expect(models).toContain('gpt-6')
     expect(models).toContain('gpt-6-astra')
+    expect(models).toContain('gpt-6-sol')
+    expect(models).toContain('gpt-6-luna')
   })
 
   it('openai 预设映射包含 GPT-6 别名和 Astra', () => {
@@ -170,6 +182,8 @@ describe('useModelWhitelist', () => {
     expect(getModelsByPlatform('antigravity')).toContain('claude-fable-5-1')
     expect(getModelsByPlatform('claude')).toContain('claude-fable-5')
     expect(getModelsByPlatform('antigravity')).toContain('claude-fable-5')
+    expect(getModelsByPlatform('claude')).toContain('claude-opus-5-5')
+    expect(getModelsByPlatform('antigravity')).not.toContain('claude-opus-5-5')
     expect(getModelsByPlatform('claude')).toContain('claude-opus-4-8')
     expect(getModelsByPlatform('antigravity')).toContain('claude-opus-4-8')
   })

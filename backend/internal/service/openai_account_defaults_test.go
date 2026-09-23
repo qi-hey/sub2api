@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestApplyOpenAICreateDefaultsAddsAstraWithoutMutatingInput(t *testing.T) {
+func TestApplyOpenAICreateDefaultsAddsGPT6ModelsWithoutMutatingInput(t *testing.T) {
 	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
 		t.Run(accountType, func(t *testing.T) {
 			credentials := map[string]any{
@@ -26,19 +26,25 @@ func TestApplyOpenAICreateDefaultsAddsAstraWithoutMutatingInput(t *testing.T) {
 			require.NoError(t, err)
 			require.JSONEq(t, string(before), string(after))
 			require.Equal(t, "gpt-6-astra", got["model_mapping"].(map[string]any)["gpt-6-astra"])
+			require.Equal(t, "gpt-6-sol", got["model_mapping"].(map[string]any)["gpt-6-sol"])
+			require.Equal(t, "gpt-6-luna", got["model_mapping"].(map[string]any)["gpt-6-luna"])
 			require.Equal(t, "gpt-5.6-sol", got["model_mapping"].(map[string]any)["gpt-5.6-sol"])
 		})
 	}
 }
 
-func TestApplyOpenAICreateDefaultsPreservesExplicitAstraMapping(t *testing.T) {
+func TestApplyOpenAICreateDefaultsPreservesExplicitGPT6Mappings(t *testing.T) {
 	got := ApplyOpenAICreateDefaults(PlatformOpenAI, AccountTypeOAuth, map[string]any{
 		"model_mapping": map[string]string{
 			"gpt-6-astra": "private-astra-route",
+			"gpt-6-sol":   "private-sol-route",
+			"gpt-6-luna":  "private-luna-route",
 		},
 	})
 
 	require.Equal(t, "private-astra-route", got["model_mapping"].(map[string]any)["gpt-6-astra"])
+	require.Equal(t, "private-sol-route", got["model_mapping"].(map[string]any)["gpt-6-sol"])
+	require.Equal(t, "private-luna-route", got["model_mapping"].(map[string]any)["gpt-6-luna"])
 }
 
 func TestApplyOpenAICreateDefaultsKeepsAllowAllMappingUnrestricted(t *testing.T) {
@@ -53,6 +59,8 @@ func TestApplyOpenAICreateDefaultsKeepsAllowAllMappingUnrestricted(t *testing.T)
 
 	require.NotContains(t, got, "model_mapping")
 	require.True(t, account.IsModelSupported("gpt-6-astra"))
+	require.True(t, account.IsModelSupported("gpt-6-sol"))
+	require.True(t, account.IsModelSupported("gpt-6-luna"))
 	require.True(t, account.IsModelSupported("future-openai-model"))
 }
 
@@ -74,7 +82,7 @@ func TestApplyOpenAICreateDefaultsLeavesNonOfficialAccountsUntouched(t *testing.
 	}
 }
 
-func TestAccountCreateServicesApplyOpenAIAstraDefault(t *testing.T) {
+func TestAccountCreateServicesApplyOpenAIGPT6Defaults(t *testing.T) {
 	t.Run("admin service", func(t *testing.T) {
 		repo := &grokDefaultsAccountRepo{}
 		svc := &adminServiceImpl{accountRepo: repo}
@@ -94,6 +102,8 @@ func TestAccountCreateServicesApplyOpenAIAstraDefault(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, "gpt-6-astra", account.GetModelMapping()["gpt-6-astra"])
+		require.Equal(t, "gpt-6-sol", account.GetModelMapping()["gpt-6-sol"])
+		require.Equal(t, "gpt-6-luna", account.GetModelMapping()["gpt-6-luna"])
 	})
 
 	t.Run("account service", func(t *testing.T) {
@@ -114,5 +124,7 @@ func TestAccountCreateServicesApplyOpenAIAstraDefault(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, "gpt-6-astra", account.GetModelMapping()["gpt-6-astra"])
+		require.Equal(t, "gpt-6-sol", account.GetModelMapping()["gpt-6-sol"])
+		require.Equal(t, "gpt-6-luna", account.GetModelMapping()["gpt-6-luna"])
 	})
 }

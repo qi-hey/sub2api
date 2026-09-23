@@ -114,7 +114,7 @@ func codexCanonicalUserAgent() string {
 	resolver := codexCanonicalUAResolver
 	codexCanonicalUAMu.RUnlock()
 	if resolver != nil {
-		if ua := strings.TrimSpace(resolver()); ua != "" {
+		if ua := resolver(); ua != "" {
 			return ua
 		}
 	}
@@ -138,20 +138,25 @@ type codexOutboundIdentity struct {
 // 永久钉死在陈旧版本上，绕过版本自动同步，落回上游优先降载的那一侧。
 // 需要固定版本请填「Codex 客户端版本号」并关闭自动同步。
 func resolveCodexOutboundIdentity(candidateUA string) codexOutboundIdentity {
-	canonical := codexCanonicalUserAgent()
-	ua := strings.TrimSpace(candidateUA)
-	if ua == "" {
-		ua = canonical
+	canonicalRaw := codexCanonicalUserAgent()
+	canonicalOriginator, canonicalUA, canonicalOK := openai.PairCodexClientIdentity(canonicalRaw)
+	if !canonicalOK {
+		canonicalOriginator, canonicalUA = openai.CodexDefaultOriginator, codexCLIUserAgent
 	}
-	originator, pairedUA, ok := openai.PairCodexClientIdentity(ua)
-	if !ok {
-		if originator, pairedUA, ok = openai.PairCodexClientIdentity(canonical); !ok {
-			originator, pairedUA = openai.CodexDefaultOriginator, codexCLIUserAgent
+	originator, pairedUA, ok := canonicalOriginator, canonicalUA, true
+	if candidateUA != "" {
+		if candidateUA != strings.TrimSpace(candidateUA) {
+			ok = false
+		} else {
+			originator, pairedUA, ok = openai.PairCodexClientIdentity(candidateUA)
 		}
+	}
+	if !ok {
+		originator, pairedUA = canonicalOriginator, canonicalUA
 	}
 	// 生效版本只有一个来源：规范身份（面板版本号 → 自动同步值 → 内置常量，见
 	// SettingService.GetOpenAICodexClientVersion）。UA 与 version 头由此同源派生。
-	version := codexClientVersionFromUA(canonical)
+	version := codexClientVersionFromUA(canonicalUA)
 	if rebuilt := openai.SetCodexUserAgentVersion(pairedUA, version); rebuilt != "" {
 		pairedUA = rebuilt
 	}

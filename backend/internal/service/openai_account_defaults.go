@@ -2,7 +2,11 @@ package service
 
 import "maps"
 
-const defaultOpenAIAstraModel = "gpt-6-astra"
+var defaultOpenAIModels = [...]string{
+	"gpt-6-astra",
+	"gpt-6-sol",
+	"gpt-6-luna",
+}
 
 // ApplyOpenAICreateDefaults adds model defaults only to official OpenAI
 // OAuth-like accounts. OpenAI-compatible API key accounts may point at other
@@ -32,8 +36,10 @@ func ApplyOpenAICreateDefaults(platform, accountType string, credentials map[str
 	if len(mapping) == 0 {
 		return clone
 	}
-	if _, exists := mapping[defaultOpenAIAstraModel]; !exists {
-		mapping[defaultOpenAIAstraModel] = defaultOpenAIAstraModel
+	for _, model := range defaultOpenAIModels {
+		if _, exists := mapping[model]; !exists {
+			mapping[model] = model
+		}
 	}
 	clone["model_mapping"] = mapping
 	return clone

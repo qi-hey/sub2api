@@ -270,7 +270,7 @@ func TestAPIKeyWithSelectedGroupDeepCopiesMutableAuthState(t *testing.T) {
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			ExactModelMappings: map[string]string{"claude": "grok"},
 		},
-		ModelsListConfig: GroupModelsListConfig{Models: []string{"grok"}},
+		ModelAllowlist: GroupModelAllowlist{Models: []string{"grok"}},
 	}
 	apiKey := &APIKey{
 		GroupID:                   &defaultGroupID,
@@ -300,7 +300,7 @@ func TestAPIKeyWithSelectedGroupDeepCopiesMutableAuthState(t *testing.T) {
 	selected.Group.ModelRouting["grok-*"][0] = 99
 	selected.Group.SupportedModelScopes[0] = "mutated"
 	selected.Group.MessagesDispatchModelConfig.ExactModelMappings["claude"] = "mutated"
-	selected.Group.ModelsListConfig.Models[0] = "mutated"
+	selected.Group.ModelAllowlist.Models[0] = "mutated"
 	*selected.Group.DailyLimitUSD = 99
 	*selected.Group.FallbackGroupID = 99
 	selected.User.AllowedGroups[0] = 99
@@ -317,7 +317,7 @@ func TestAPIKeyWithSelectedGroupDeepCopiesMutableAuthState(t *testing.T) {
 	require.Equal(t, int64(1), apiKey.Groups[1].ModelRouting["grok-*"][0])
 	require.Equal(t, "claude", apiKey.Groups[1].SupportedModelScopes[0])
 	require.Equal(t, "grok", apiKey.Groups[1].MessagesDispatchModelConfig.ExactModelMappings["claude"])
-	require.Equal(t, "grok", apiKey.Groups[1].ModelsListConfig.Models[0])
+	require.Equal(t, "grok", apiKey.Groups[1].ModelAllowlist.Models[0])
 	require.Equal(t, 10.0, *apiKey.Groups[1].DailyLimitUSD)
 	require.Equal(t, int64(20), *apiKey.Groups[1].FallbackGroupID)
 	require.Equal(t, []int64{defaultGroupID, secondaryGroupID}, apiKey.User.AllowedGroups)

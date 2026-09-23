@@ -3,16 +3,17 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import type { ApiKey } from '@/types'
+import { keysAPI } from '@/api'
 import KeysView from '../KeysView.vue'
 
 const {
   listKeys,
+  updateKey,
   getPublicSettings,
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
   createKey,
-  updateKey,
   showError,
   showSuccess,
   copyToClipboard,
@@ -20,6 +21,7 @@ const {
   nextStep,
 } = vi.hoisted(() => ({
   listKeys: vi.fn(),
+  updateKey: vi.fn(),
   getPublicSettings: vi.fn(),
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
@@ -163,8 +165,8 @@ const TablePageLayoutStub = {
 
 const DataTableStub = {
   name: 'DataTable',
-  props: ['columns', 'data'],
-  emits: ['sort'],
+  props: { columns: Array, data: Array, selectedKeys: Array, selectable: Boolean },
+  emits: ['sort', 'update:selectedKeys'],
   template: `
     <div>
       <div data-test="columns">{{ columns.map((col) => col.key).join(',') }}</div>
@@ -180,6 +182,7 @@ const DataTableStub = {
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
         <slot name="cell-name" :value="row.name" :row="row" />
+        <slot name="cell-actions" :row="row" />
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
         </div>
@@ -199,8 +202,9 @@ const DataTableStub = {
 
 const BaseDialogStub = {
   name: 'BaseDialog',
-  props: ['show'],
-  template: '<div v-if="show"><slot /><slot name="footer" /></div>',
+  props: ['show', 'title'],
+  emits: ['close'],
+  template: '<div v-if="show" role="dialog"><button data-test="close-dialog" @click="$emit(\'close\')">Close</button><slot /><slot name="footer" /></div>',
 }
 
 const SelectStub = {
@@ -248,6 +252,7 @@ const mountView = async () => {
         SearchInput: SearchInputStub,
         Icon: IconStub,
         UseKeyModal: true,
+        BulkEditKeysModal: true,
         EndpointPopover: true,
         GroupBadge: true,
         GroupOptionItem: true,
@@ -279,6 +284,8 @@ describe('user KeysView column settings', () => {
     localStorage.clear()
 
     listKeys.mockReset()
+    updateKey.mockReset()
+    vi.mocked(keysAPI.create).mockReset()
     getPublicSettings.mockReset()
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
@@ -307,6 +314,43 @@ describe('user KeysView column settings', () => {
     isCurrentStep.mockReturnValue(false)
   })
 
+  it.each([
+    { initialStatus: 'quota_exhausted', status: 'active', formStatus: 'active' },
+    { initialStatus: 'inactive', status: 'inactive', formStatus: 'inactive' },
+    { initialStatus: 'active', status: 'active', formStatus: 'inactive' },
+  ] as const)('syncs quota reset from $initialStatus to $status with form status $formStatus', async ({ initialStatus, status, formStatus }) => {
+    const key: ApiKey = {
+      ...createApiKey(), group_id: 1, quota: 10, quota_used: 10,
+      status: initialStatus,
+    }
+    listKeys.mockResolvedValueOnce({ items: [key], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateKey.mockResolvedValue({ ...key, status, quota_used: 0 })
+    const wrapper = await mountView()
+    await getButtonByText(wrapper, 'common.edit').trigger('click')
+    await wrapper.get('[data-tour="key-form-name"]').setValue('Unsaved name')
+    const statusSelect = wrapper.findAllComponents({ name: 'Select' })
+      .find((select) => select.props('options').length === 2 &&
+        select.props('options')[0].value === 'active')!
+    statusSelect.vm.$emit('update:modelValue', 'inactive')
+    await wrapper.get('button[title="keys.resetQuotaUsed"]').trigger('click')
+    const confirmation = wrapper.findAllComponents({ name: 'ConfirmDialog' })
+      .find((dialog) => dialog.props('title') === 'keys.resetQuotaTitle')!
+    confirmation.vm.$emit('confirm')
+    await flushPromises()
+
+    expect(updateKey).toHaveBeenNthCalledWith(1, key.id, { reset_quota: true })
+    expect(wrapper.findComponent({ name: 'DataTable' }).props('data')[0])
+      .toMatchObject({ status, quota_used: 0 })
+    expect(statusSelect.props('modelValue')).toBe(formStatus)
+    expect((wrapper.get('[data-tour="key-form-name"]').element as HTMLInputElement).value)
+      .toBe('Unsaved name')
+
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+    expect(updateKey).toHaveBeenNthCalledWith(2, key.id, expect.objectContaining({ name: 'Unsaved name', status: formStatus }))
+    wrapper.unmount()
+  })
+
   it('uses the default API key columns with low-frequency columns hidden', async () => {
     const wrapper = await mountView()
 
@@ -325,6 +369,66 @@ describe('user KeysView column settings', () => {
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_at')
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_ip')
     expect(visibleColumnKeys(wrapper)).not.toContain('id')
+  })
+
+  it('opens bulk editing with only selected visible keys', async () => {
+    const wrapper = await mountView()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    expect(table.props('selectable')).toBe(true)
+    table.vm.$emit('update:selectedKeys', [1, 99])
+    await nextTick()
+    await wrapper.get('[data-test="bulk-edit-keys"]').trigger('click')
+    const modal = wrapper.findComponent({ name: 'BulkEditKeysModal' })
+    expect(modal.props('show')).toBe(true)
+    expect(modal.props('selectedKeys').map((key: ApiKey) => key.id)).toEqual([1])
+    wrapper.unmount()
+  })
+
+  it.each(['filter', 'page size', 'sort'])('clears selection on %s changes', async (change) => {
+    const wrapper = await mountView()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    table.vm.$emit('update:selectedKeys', [1])
+    await nextTick()
+    if (change === 'filter') {
+      wrapper.findComponent({ name: 'SearchInput' }).vm.$emit('search')
+    } else if (change === 'page size') {
+      await wrapper.get('[data-test="page-size-50"]').trigger('click')
+    } else {
+      table.vm.$emit('sort', 'created_at', 'asc')
+    }
+    await flushPromises()
+    expect(table.props('selectedKeys')).toEqual([])
+    expect(wrapper.find('[data-test="bulk-edit-keys"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('removes successful keys from the selection and refreshes the table', async () => {
+    listKeys.mockResolvedValue({
+      items: [createApiKey(), { ...createApiKey(), id: 2, name: 'Second' }],
+      total: 2, pages: 1
+    })
+    const wrapper = await mountView()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    table.vm.$emit('update:selectedKeys', [1, 2])
+    await nextTick()
+    await wrapper.get('[data-test="bulk-edit-keys"]').trigger('click')
+    wrapper.findComponent({ name: 'BulkEditKeysModal' }).vm.$emit('updated', [1])
+    await flushPromises()
+    expect(listKeys).toHaveBeenCalledTimes(2)
+    expect(table.props('selectedKeys')).toEqual([2])
+    wrapper.unmount()
+  })
+
+  it('drops keys that are no longer visible after a refresh', async () => {
+    const wrapper = await mountView()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    table.vm.$emit('update:selectedKeys', [1])
+    await nextTick()
+    listKeys.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    await wrapper.get('button[title="Refresh"]').trigger('click')
+    await flushPromises()
+    expect(table.props('selectedKeys')).toEqual([])
+    wrapper.unmount()
   })
 
   it('shows a hidden column when toggled and persists the preference', async () => {
@@ -468,11 +572,15 @@ describe('user KeysView column settings', () => {
     await getButtonByText(wrapper, 'Create API Key').trigger('click')
     await nextTick()
     await wrapper.get('[data-tour="key-form-name"]').setValue('CC Switch')
-    await wrapper.get('[data-test="key-group-checkbox-12"]').setValue(true)
-    await wrapper.get('[data-test="key-group-checkbox-2"]').setValue(true)
     await wrapper.get('[data-test="key-group-checkbox-11"]').setValue(true)
+    await wrapper.get('input[name="key-provider"][value="openai"]').setValue(true)
+    await nextTick()
+    await wrapper.get('[data-test="key-group-checkbox-2"]').setValue(true)
     await wrapper.get('[data-test="key-default-group-2"]').setValue(true)
     expect(wrapper.get('[data-test="key-default-group-2"]').attributes('aria-label')).toBe('keys.defaultGroupLabel: Codex')
+    await wrapper.get('input[name="key-provider"][value="other"]').setValue(true)
+    await nextTick()
+    await wrapper.get('[data-test="key-group-checkbox-12"]').setValue(true)
     await wrapper.get('#key-form').trigger('submit')
     await flushPromises()
 
@@ -629,6 +737,102 @@ describe('user KeysView column settings', () => {
     expect(updateKey).toHaveBeenCalledWith(1, {
       group_id: 12,
       group_ids: [2, 11, 12],
+    })
+  })
+
+  describe('create provider selection', () => {
+    const platforms = ['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'gemini', 'grok', 'antigravity', 'composite', 'opencode_go']
+    const availableGroups = platforms.map((platform, index) => ({
+      id: index + 1,
+      // Deliberately ambiguous names: classification must follow the platform.
+      name: `Shared group ${index + 1}`,
+      platform,
+      rate_multiplier: 1,
+      subscription_type: 'standard',
+    }))
+    const visibleGroupIDs = (wrapper: VueWrapper) => wrapper
+      .findAll('input[data-test^="key-group-checkbox-"]')
+      .map((input) => Number(input.attributes('data-test').replace('key-group-checkbox-', '')))
+    const chooseProvider = (wrapper: VueWrapper, value: string) => wrapper.get(`input[name="key-provider"][value="${value}"]`).setValue()
+    const openCreate = async () => {
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      return wrapper
+    }
+
+    beforeEach(() => {
+      getAvailableGroups.mockResolvedValue(availableGroups)
+    })
+
+    it('classifies all configured platforms and retains the complete table filter', async () => {
+      const wrapper = await openCreate()
+      expect(wrapper.findAll('input[name="key-provider"]')).toHaveLength(4)
+      expect(visibleGroupIDs(wrapper)).toEqual([1])
+      await chooseProvider(wrapper, 'openai')
+      expect(visibleGroupIDs(wrapper)).toEqual([2])
+      await chooseProvider(wrapper, 'domestic')
+      expect(visibleGroupIDs(wrapper)).toEqual([3, 4, 5, 6])
+      await chooseProvider(wrapper, 'other')
+      expect(visibleGroupIDs(wrapper)).toEqual([7, 8, 9, 10, 11])
+      expect(wrapper.findAllComponents({ name: 'Select' })[0].props('options')).toHaveLength(13)
+    })
+
+    it('preserves bound groups across provider filters and submits them together', async () => {
+      const wrapper = await openCreate()
+      await wrapper.get('[data-tour="key-form-name"]').setValue('My key')
+      await wrapper.get('[data-test="key-group-checkbox-1"]').setValue(true)
+      await chooseProvider(wrapper, 'domestic')
+      expect(wrapper.find('[data-test="key-group-checkbox-1"]').exists()).toBe(false)
+      await wrapper.get('[data-test="key-group-checkbox-5"]').setValue(true)
+      vi.mocked(keysAPI.create).mockResolvedValue({ ...createApiKey(), group_id: 5 })
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(keysAPI.create).toHaveBeenCalledOnce()
+      expect(vi.mocked(keysAPI.create)).toHaveBeenCalledWith(expect.objectContaining({
+        name: 'My key',
+        group_id: 1,
+        group_ids: [1, 5],
+      }))
+    })
+
+    it('defaults to a provider with available groups and disables empty categories', async () => {
+      getAvailableGroups.mockResolvedValue([availableGroups[5]])
+      const wrapper = await openCreate()
+      expect(wrapper.get<HTMLInputElement>('input[value="domestic"]').element.checked).toBe(true)
+      expect(wrapper.get<HTMLInputElement>('input[value="anthropic"]').element.disabled).toBe(true)
+      expect(visibleGroupIDs(wrapper)).toEqual([6])
+    })
+
+    it('shows the empty state when no groups are available', async () => {
+      getAvailableGroups.mockResolvedValue([])
+      const wrapper = await openCreate()
+      expect(wrapper.get('[data-tour="key-form-provider"]').text()).toContain('common.noGroupsAvailable')
+      expect(visibleGroupIDs(wrapper)).toEqual([])
+      expect(wrapper.findAll<HTMLInputElement>('input[name="key-provider"]').every((input) => input.element.disabled)).toBe(true)
+    })
+
+    it('selects an available provider when groups arrive after opening', async () => {
+      let resolveGroups!: (value: typeof availableGroups) => void
+      getAvailableGroups.mockReturnValue(new Promise((resolve) => { resolveGroups = resolve }))
+      const wrapper = await openCreate()
+      resolveGroups([availableGroups[1]])
+      await flushPromises()
+      expect(wrapper.get<HTMLInputElement>('input[value="openai"]').element.checked).toBe(true)
+      expect(visibleGroupIDs(wrapper)).toEqual([2])
+    })
+
+    it('resets provider and group when reopening create, and preserves edit options', async () => {
+      const wrapper = await openCreate()
+      await chooseProvider(wrapper, 'domestic')
+      await wrapper.get('[data-test="key-group-checkbox-5"]').setValue(true)
+      await wrapper.get('[data-test="close-dialog"]').trigger('click')
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      expect(visibleGroupIDs(wrapper)).toEqual([1])
+      expect(wrapper.find('[data-test="key-default-group-1"]').exists()).toBe(false)
+      await wrapper.get('[data-test="close-dialog"]').trigger('click')
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
+      expect(visibleGroupIDs(wrapper)).toHaveLength(11)
     })
   })
 })
