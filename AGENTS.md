@@ -42,3 +42,12 @@ proxy, and production VPS.
 10. For Sub2API upgrades, build and test locally first, preserve downstream
     customizations, compare migrations and configuration effects, create a
     complete VPS backup, and deploy only after the isolated validation passes.
+11. Keep these rules project-scoped. Do not copy them into the global
+    `C:\Users\Administrator\.codex\AGENTS.md` or an unrelated repository.
+    Before using a newly created or historical worktree for production work,
+    verify that its repository root contains this `AGENTS.md`; synchronize it
+    before making any production-affecting change.
+12. Never expose API keys, OAuth tokens, proxy credentials, SSH passwords, or
+    other secrets in commits, logs, screenshots, test fixtures, or user-facing
+    summaries. Redact secret values while preserving enough context to diagnose
+    the problem.
