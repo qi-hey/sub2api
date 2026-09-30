@@ -6,7 +6,7 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.2.10`, released as
-`0.2.10-r75`. The upgrade retains all required downstream customizations in
+`0.2.10-r76`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.2.10`, including:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
@@ -59,6 +59,17 @@ Upstream `v0.2.0` added group migrations for reasoning-effort policies and Fast:
 `232_group_force_openai_fast.sql`, and `233_group_free_openai_fast.sql`.
 They are additive and default both Fast switches to disabled, so the upgrade
 does not silently change existing groups or billing.
+
+### r76 GPT-6.1 Sol Ultra option
+
+Codex Ultra is a client multi-agent workflow, not an upstream
+`reasoning.effort=ultra` request. Codex's own GPT-6.1 Sol catalog lists
+Ultra with `multi_agent_version=v2` and `multi_agent_reasoning_effort=xhigh`.
+The downstream Codex model manifest and the local user catalog advertise
+that option while retaining low through max, Fast/Priority, and the current
+`gpt-6.1-sol/max` default. Account mappings, group allowlists, fingerprints,
+base URLs, provider tokens, CC Switch database records, and sessions do not
+change for this release.
 
 ### r75 upstream v0.2.10 and GPT-6.1 Sol
 

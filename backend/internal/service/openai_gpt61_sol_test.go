@@ -19,9 +19,24 @@ func TestGPT61SolKeepsSeparateIdentityAndReasoningLimits(t *testing.T) {
 	require.Equal(t, "max", normalizeOpenAIReasoningEffortForModel("max", "gpt-6.1-sol"))
 
 	levels := configuredCodexGPTReasoningLevels("gpt-6.1-sol")
-	require.Len(t, levels, 5)
+	require.Len(t, levels, 6)
 	require.Equal(t, "low", levels[0].Effort)
 	require.Equal(t, "max", levels[4].Effort)
+	require.Equal(t, "ultra", levels[5].Effort)
+
+	model := newConfiguredCodexModelDescriptor("gpt-6.1-sol")
+	require.Equal(t, "medium", *model.DefaultReasoningLevel)
+	require.Equal(t, "xhigh", *model.MultiAgentReasoningEffort)
+	require.Equal(t, "v2", model.MultiAgentVersion)
+	require.Equal(t, levels, model.SupportedReasoningLevels)
+	require.Equal(t, []configuredCodexServiceTier{{
+		ID: "priority", Name: "Fast", Description: "Priority processing for lower latency.",
+	}}, model.ServiceTiers)
+	require.Equal(t, int64(configuredCodexGPT56MaxContext), model.MaxContextWindow)
+
+	legacy := newConfiguredCodexModelDescriptor("gpt-6-sol")
+	require.Nil(t, legacy.MultiAgentReasoningEffort)
+	require.NotContains(t, effortsFromConfiguredCodexLevels(legacy.SupportedReasoningLevels), "ultra")
 }
 
 func TestGPT61SolResponsesKeepsModelAndMaxEffort(t *testing.T) {
