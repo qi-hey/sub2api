@@ -71,6 +71,17 @@ that option while retaining low through max, Fast/Priority, and the current
 base URLs, provider tokens, CC Switch database records, and sessions do not
 change for this release.
 
+The r76 binary was built locally and deployed on 2026-09-30 (SHA256
+`5e04dc45b10777b1fa0529cbe00221577b61f76f0436b57fdaf0593b07d6a7f7`).
+The complete pre-deploy VPS backup is
+`/opt/sub2api/backups/r75-before-r76-20260930T020629Z`. The pre-edit
+CC Switch database, settings, active catalog, and Codex config are under
+`C:\Users\Administrator\.cc-switch\backups\before_gpt61_ultra_20260930-100145`.
+The catalog update was simulated and its rollback rehearsed before the
+production file was changed. Server health returned 200, the CC Switch
+process and local ports stayed unchanged, and the full fingerprint digest
+remained equal to r75.
+
 ### r75 upstream v0.2.10 and GPT-6.1 Sol
 
 Branch `custom/v0210-r75` integrates upstream `v0.2.9` and `v0.2.10`,
