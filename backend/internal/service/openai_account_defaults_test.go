@@ -27,6 +27,7 @@ func TestApplyOpenAICreateDefaultsAddsGPT6ModelsWithoutMutatingInput(t *testing.
 			require.JSONEq(t, string(before), string(after))
 			require.Equal(t, "gpt-6-astra", got["model_mapping"].(map[string]any)["gpt-6-astra"])
 			require.Equal(t, "gpt-6-sol", got["model_mapping"].(map[string]any)["gpt-6-sol"])
+			require.Equal(t, "gpt-6.1-sol", got["model_mapping"].(map[string]any)["gpt-6.1-sol"])
 			require.Equal(t, "gpt-6-luna", got["model_mapping"].(map[string]any)["gpt-6-luna"])
 			require.Equal(t, "gpt-5.6-sol", got["model_mapping"].(map[string]any)["gpt-5.6-sol"])
 		})
@@ -38,12 +39,14 @@ func TestApplyOpenAICreateDefaultsPreservesExplicitGPT6Mappings(t *testing.T) {
 		"model_mapping": map[string]string{
 			"gpt-6-astra": "private-astra-route",
 			"gpt-6-sol":   "private-sol-route",
+			"gpt-6.1-sol": "private-sol61-route",
 			"gpt-6-luna":  "private-luna-route",
 		},
 	})
 
 	require.Equal(t, "private-astra-route", got["model_mapping"].(map[string]any)["gpt-6-astra"])
 	require.Equal(t, "private-sol-route", got["model_mapping"].(map[string]any)["gpt-6-sol"])
+	require.Equal(t, "private-sol61-route", got["model_mapping"].(map[string]any)["gpt-6.1-sol"])
 	require.Equal(t, "private-luna-route", got["model_mapping"].(map[string]any)["gpt-6-luna"])
 }
 
@@ -60,6 +63,7 @@ func TestApplyOpenAICreateDefaultsKeepsAllowAllMappingUnrestricted(t *testing.T)
 	require.NotContains(t, got, "model_mapping")
 	require.True(t, account.IsModelSupported("gpt-6-astra"))
 	require.True(t, account.IsModelSupported("gpt-6-sol"))
+	require.True(t, account.IsModelSupported("gpt-6.1-sol"))
 	require.True(t, account.IsModelSupported("gpt-6-luna"))
 	require.True(t, account.IsModelSupported("future-openai-model"))
 }
@@ -103,6 +107,7 @@ func TestAccountCreateServicesApplyOpenAIGPT6Defaults(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "gpt-6-astra", account.GetModelMapping()["gpt-6-astra"])
 		require.Equal(t, "gpt-6-sol", account.GetModelMapping()["gpt-6-sol"])
+		require.Equal(t, "gpt-6.1-sol", account.GetModelMapping()["gpt-6.1-sol"])
 		require.Equal(t, "gpt-6-luna", account.GetModelMapping()["gpt-6-luna"])
 	})
 
@@ -125,6 +130,7 @@ func TestAccountCreateServicesApplyOpenAIGPT6Defaults(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "gpt-6-astra", account.GetModelMapping()["gpt-6-astra"])
 		require.Equal(t, "gpt-6-sol", account.GetModelMapping()["gpt-6-sol"])
+		require.Equal(t, "gpt-6.1-sol", account.GetModelMapping()["gpt-6.1-sol"])
 		require.Equal(t, "gpt-6-luna", account.GetModelMapping()["gpt-6-luna"])
 	})
 }

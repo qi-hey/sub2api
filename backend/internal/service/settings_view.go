@@ -177,6 +177,7 @@ type SystemSettings struct {
 	GameLoyaltyRewardCatalog     string
 	RiskControlEnabled           bool
 	CyberSessionBlockEnabled     bool
+	CyberPolicyUserAllowlist     string
 	CyberSessionBlockTTLSeconds  int
 	AffiliateEnabled             bool
 	AffiliateRebateRate          float64

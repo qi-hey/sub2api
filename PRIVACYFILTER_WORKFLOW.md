@@ -5,9 +5,9 @@ that must survive every upstream update.
 
 ## Current downstream release
 
-The current downstream base is upstream `v0.2.8`, released as
-`0.2.8-r74`. The upgrade retains all required downstream customizations in
-this document and the upstream fixes accumulated through `v0.2.8`, including:
+The current downstream base is upstream `v0.2.10`, released as
+`0.2.10-r75`. The upgrade retains all required downstream customizations in
+this document and the upstream fixes accumulated through `v0.2.10`, including:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
 - OpenAI incomplete-stream proxy quarantine (`47ad29db3`);
@@ -59,6 +59,26 @@ Upstream `v0.2.0` added group migrations for reasoning-effort policies and Fast:
 `232_group_force_openai_fast.sql`, and `233_group_free_openai_fast.sql`.
 They are additive and default both Fast switches to disabled, so the upgrade
 does not silently change existing groups or billing.
+
+### r75 upstream v0.2.10 and GPT-6.1 Sol
+
+Branch `custom/v0210-r75` integrates upstream `v0.2.9` and `v0.2.10`,
+including the composite-group routing, streaming-usage, account-whitelist
+mapping, multi-tool rewrite, and Claude Sonnet 5.5 fixes. Its merge keeps the
+downstream subscription fallback dependency and both sets of fingerprint
+and model-mapping regression tests.
+
+The five fingerprint source/seed-migration files listed below are byte-for-byte
+unchanged from r74. The new `242_add_gpt61_sol_openai_defaults.sql` only adds
+an identity mapping to nonempty mappings on existing official OpenAI OAuth
+and Setup Token accounts. Empty/unrestricted mappings and explicit overrides
+remain untouched; it does not update `extra` or fingerprint seeds.
+The backend and account-creation UI recognize `gpt-6.1-sol` with low through
+max reasoning, Fast/Priority, and a separate cached-input price. New account
+defaults include it alongside existing models. Group allowlists and the local
+CC Switch catalog require a separately backed-up, validated production change;
+do not remove `gpt-6-sol` from server routing or existing account mappings,
+because ongoing conversations may still reference it.
 
 ### r74 upstream v0.2.8 integration
 
