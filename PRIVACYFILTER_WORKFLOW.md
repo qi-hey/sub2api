@@ -75,10 +75,29 @@ and Setup Token accounts. Empty/unrestricted mappings and explicit overrides
 remain untouched; it does not update `extra` or fingerprint seeds.
 The backend and account-creation UI recognize `gpt-6.1-sol` with low through
 max reasoning, Fast/Priority, and a separate cached-input price. New account
-defaults include it alongside existing models. Group allowlists and the local
-CC Switch catalog require a separately backed-up, validated production change;
-do not remove `gpt-6-sol` from server routing or existing account mappings,
-because ongoing conversations may still reference it.
+defaults include it alongside existing models. On 2026-09-30, the VPS binary
+was built locally and deployed as `0.2.10-r75` (SHA256
+`76262fa7b5b5619273256121b2690b99119699eb440d993de113fe21cb5eafdf`).
+The pre-deploy database and r74 binary are under
+`/opt/sub2api/backups/r74-before-r75-20260930T013620Z`. A separately restored
+database copy passed migration and group-allowlist rehearsal. The production
+migration added identity mappings to both existing official OAuth accounts
+without changing the fingerprint digest, and groups 2 and 3 now include the
+new model while preserving the old model. Redis auth caches for their five
+bound keys were invalidated. A single direct streaming canary completed with
+HTTP 200 and `response.model=gpt-6.1-sol`.
+
+The CC Switch database, active Codex config, and user model catalog were
+backed up under
+`C:\Users\Administrator\.cc-switch\backups\before_gpt61_swap_20260930-095030`.
+The isolated clone passed the model replacement and rollback rehearsal.
+Only the active provider's saved default was switched to `gpt-6.1-sol/max`.
+The local catalog replaced its `gpt-6-sol` entry with `gpt-6.1-sol` (low
+through max, Fast/Priority). The live Codex config has the same new default;
+its `15722` image-relay URL, `PROXY_MANAGED` placeholder, other providers,
+sessions, and the running CC Switch process were preserved. Do not remove
+`gpt-6-sol` from server routing or existing account mappings: ongoing
+conversations may still reference it.
 
 ### r74 upstream v0.2.8 integration
 
