@@ -88,3 +88,10 @@ the independent upgrade backup above does not depend on that timer.
 - CC Switch database provider records, settings, Codex config and model catalog
   matched the pre-upgrade snapshot; listeners remained on PIDs 37452/8292 at
   ports 15721/15722. No session files were rewritten.
+- After the canary, the broad `codex_*` snapshot changed because it includes
+  quota percentages and update timestamps. An independent restore of the
+  cutover account table confirmed that fingerprint seeds, modes and identity
+  flags were identical for all 58 OpenAI rows, including soft-deleted rows.
+  Future post-traffic identity comparisons must exclude quota telemetry.
+- All temporary rehearsal databases and restored private staging directories
+  were removed after verification; production and local rollback backups remain.
