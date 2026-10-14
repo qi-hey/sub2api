@@ -965,6 +965,10 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 		"oauth_type",
 		"plan_type",
 		"account_scheduling_threshold",
+		"base_url",
+		"auth_mode",
+		service.GeminiExplicitCacheUpstreamCredentialKey,
+		service.GeminiExplicitCacheUpstreamMaxTTLCredentialKey,
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {

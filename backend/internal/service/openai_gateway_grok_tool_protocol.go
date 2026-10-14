@@ -85,6 +85,13 @@ func lowerGrokResponsesCustomToolHistory(value any) bool {
 			items[index] = buildGrokResponsesFunctionCall(item, "tool_search", grokResponsesToolProtocolJSONText(item["arguments"]))
 			changed = true
 		case "custom_tool_call_output", "tool_search_output", "function_call_output":
+			if grokResponsesToolProtocolString(item["type"]) == "function_call_output" {
+				_, structuredOutput := item["output"].([]any)
+				if item["content"] != nil || item["images"] != nil || structuredOutput {
+					// The model-input normalizer separates image content after this pass.
+					continue
+				}
+			}
 			normalized := buildGrokResponsesFunctionCallOutput(item)
 			if !reflect.DeepEqual(item, normalized) {
 				items[index] = normalized

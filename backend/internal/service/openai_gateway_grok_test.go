@@ -436,7 +436,7 @@ func TestSanitizeGrokResponsesToolsRemovesDeferredFlagsWithToolSearch(t *testing
 	require.True(t, gjson.GetBytes(patched, `tools.#(name=="apply_patch")`).Exists())
 }
 
-func TestSanitizeGrokResponsesToolsSimplifiesInvalidRootUnion(t *testing.T) {
+func TestSanitizeGrokResponsesToolsPreservesCallableRootVariant(t *testing.T) {
 	body := []byte(`{"tools":[
 		{"type":"function","name":"mcp__codex_app__automation_update","strict":true,"parameters":{"oneOf":[{"type":"object","properties":{"id":{"type":"string"}}},{"type":"null"}]}},
 		{"type":"function","name":"object_only","strict":true,"parameters":{"type":"object","anyOf":[{"type":"object","properties":{"a":{"type":"string"}}},{"type":"object","properties":{"b":{"type":"integer"}}}]}}
@@ -448,17 +448,16 @@ func TestSanitizeGrokResponsesToolsSimplifiesInvalidRootUnion(t *testing.T) {
 
 	mixed := gjson.GetBytes(patched, `tools.#(name=="mcp__codex_app__automation_update")`)
 	require.Equal(t, "object", mixed.Get("parameters.type").String())
-	require.True(t, mixed.Get("parameters.properties").IsObject())
-	require.True(t, mixed.Get("parameters.additionalProperties").Bool())
-	require.False(t, mixed.Get("parameters.oneOf").Exists())
-	require.Equal(t, gjson.False, mixed.Get("strict").Type)
+	require.Len(t, mixed.Get("parameters.oneOf").Array(), 1)
+	require.Equal(t, "string", mixed.Get("parameters.oneOf.0.properties.id.type").String())
+	require.Equal(t, gjson.True, mixed.Get("strict").Type)
 
 	objectOnly := gjson.GetBytes(patched, `tools.#(name=="object_only")`)
 	require.True(t, objectOnly.Get("parameters.anyOf").Exists())
 	require.Equal(t, gjson.True, objectOnly.Get("strict").Type)
 }
 
-func TestPatchGrokResponsesBodySimplifiesTypedInvalidRootUnion(t *testing.T) {
+func TestPatchGrokResponsesBodyPreservesReferencedRootVariant(t *testing.T) {
 	body := []byte(`{
 		"model":"grok-4.6",
 		"metadata":{"session_id":"abc"},
@@ -485,11 +484,10 @@ func TestPatchGrokResponsesBodySimplifiesTypedInvalidRootUnion(t *testing.T) {
 
 	tool := gjson.GetBytes(patched, `tools.#(name=="mcp__codex_app__automation_update")`)
 	require.Equal(t, "object", tool.Get("parameters.type").String())
-	require.True(t, tool.Get("parameters.properties").IsObject())
-	require.True(t, tool.Get("parameters.additionalProperties").Bool())
-	require.False(t, tool.Get("parameters.oneOf").Exists())
-	require.False(t, tool.Get("parameters.$defs").Exists())
-	require.Equal(t, gjson.False, tool.Get("strict").Type)
+	require.Len(t, tool.Get("parameters.oneOf").Array(), 1)
+	require.Equal(t, "string", tool.Get("parameters.oneOf.0.properties.id.type").String())
+	require.False(t, tool.Get("parameters.oneOf.0.$ref").Exists())
+	require.Equal(t, gjson.True, tool.Get("strict").Type)
 }
 
 func TestSanitizeGrokResponsesToolsKeepsToolChoiceOnlyWithSupportedTools(t *testing.T) {
@@ -3408,7 +3406,7 @@ func TestHandleGrokAccountUpstreamError429PoolModeKeepsSchedulingState(t *testin
 	require.Nil(t, account.RateLimitResetAt)
 }
 
-func TestHandleGrokAccountUpstreamError402RecoversAfterCooldownExpiry(t *testing.T) {
+func TestHandleGrokAccountUpstreamError402KeepsDownstreamSchedulingDisabled(t *testing.T) {
 	account := &Account{
 		ID: 610, Platform: PlatformGrok, Type: AccountTypeOAuth,
 		Status: StatusActive, Schedulable: true,
@@ -3417,15 +3415,18 @@ func TestHandleGrokAccountUpstreamError402RecoversAfterCooldownExpiry(t *testing
 	svc := &OpenAIGatewayService{accountRepo: repo}
 
 	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusPaymentRequired, nil, nil)
-	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
-	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, 1, repo.schedulableCalls)
+	require.False(t, repo.lastSchedulable)
+	require.Zero(t, repo.tempUnschedCalls)
 
+	// A fresh scheduler snapshot observes the persisted disabled state.
+	account.Schedulable = repo.lastSchedulable
 	expired := time.Now().Add(-time.Second)
 	account.TempUnschedulableUntil = &expired
 	svc.openaiAccountRuntimeBlockUntil.Store(account.ID, expired)
 
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
-	require.True(t, account.IsSchedulable())
+	require.False(t, account.IsSchedulable())
 }
 
 func TestHandleGrokAccountUpstreamError429UsesLatestExhaustedWindowReset(t *testing.T) {

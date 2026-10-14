@@ -27,16 +27,17 @@ import (
 
 type grokCredentialHandlerRepo struct {
 	service.AccountRepository
-	mu             sync.Mutex
-	accounts       []service.Account
-	setErrorIDs    []int64
-	setTempIDs     []int64
-	rateLimitIDs   []int64
-	updateExtraIDs []int64
-	selectionCalls int
-	setErrorErr    error
-	setTempErr     error
-	missingOnGet   map[int64]bool
+	mu                sync.Mutex
+	accounts          []service.Account
+	setErrorIDs       []int64
+	setTempIDs        []int64
+	setSchedulableIDs []int64
+	rateLimitIDs      []int64
+	updateExtraIDs    []int64
+	selectionCalls    int
+	setErrorErr       error
+	setTempErr        error
+	missingOnGet      map[int64]bool
 }
 
 func (r *grokCredentialHandlerRepo) ListSchedulableByPlatform(_ context.Context, platform string) ([]service.Account, error) {
@@ -104,6 +105,18 @@ func (r *grokCredentialHandlerRepo) SetTempUnschedulable(_ context.Context, id i
 		if r.accounts[i].ID == id {
 			value := until
 			r.accounts[i].TempUnschedulableUntil = &value
+		}
+	}
+	return nil
+}
+
+func (r *grokCredentialHandlerRepo) SetSchedulable(_ context.Context, id int64, schedulable bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.setSchedulableIDs = append(r.setSchedulableIDs, id)
+	for i := range r.accounts {
+		if r.accounts[i].ID == id {
+			r.accounts[i].Schedulable = schedulable
 		}
 	}
 	return nil
@@ -594,7 +607,7 @@ func TestResponsesGrok429FailoverIsBounded(t *testing.T) {
 	})
 }
 
-func TestResponsesGrok402FailoverCooldown(t *testing.T) {
+func TestResponsesGrok402FailoverKeepsAccountDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	_, repo, upstream, router, cleanup := newGrokCredentialFailoverHandler(t, "first_402")
 	defer cleanup()
@@ -607,7 +620,7 @@ func TestResponsesGrok402FailoverCooldown(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 	require.Contains(t, recorder.Body.String(), "resp_healthy")
 	require.Equal(t, []int64{801, 802}, upstream.accountHits())
-	require.Equal(t, []int64{801}, repo.setTempIDs)
+	require.Equal(t, []int64{801}, repo.setSchedulableIDs)
 	before := repo.selectorCalls()
 
 	second := httptest.NewRecorder()
@@ -617,7 +630,7 @@ func TestResponsesGrok402FailoverCooldown(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
 	require.Equal(t, before+1, repo.selectorCalls())
-	require.Equal(t, []int64{801, 802, 802}, upstream.accountHits(), "cooldown must exclude the 402 account from later requests")
+	require.Equal(t, []int64{801, 802, 802}, upstream.accountHits(), "disabled 402 account must stay excluded from later requests")
 }
 
 func TestResponsesGrok429FailoverHandlesMixedStatuses(t *testing.T) {

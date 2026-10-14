@@ -225,3 +225,12 @@ func TestRedeemGameTokenUsesExactCreditWithoutAffiliateOrRecharge(t *testing.T) 
 func TestApplyGameTokenBalanceCreditExactSQLContract(t *testing.T) {
 	require.Equal(t, "game_token", RedeemTypeGameToken)
 }
+
+func TestRedeemServiceKeepsAbsentOptionalDependenciesNil(t *testing.T) {
+	svc := NewRedeemService(nil, nil, nil, nil, nil, nil, nil, nil)
+	require.Nil(t, svc.billingCacheService)
+	require.Nil(t, svc.affiliateService)
+	require.NotPanics(t, func() {
+		svc.invalidateRedeemCaches(context.Background(), 1, &RedeemCode{Type: RedeemTypeBalance})
+	})
+}

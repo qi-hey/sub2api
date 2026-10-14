@@ -328,8 +328,12 @@ func (s *GrokOAuthService) RefreshAccountToken(ctx context.Context, account *Acc
 		clientID := account.GetCredential("client_id")
 		tokenInfo, err := s.RefreshToken(ctx, refreshToken, proxyURL, clientID)
 		if err == nil {
-			tokenInfo.SubscriptionTier = account.GetCredential("subscription_tier")
-			tokenInfo.EntitlementStatus = account.GetCredential("entitlement_status")
+			if strings.TrimSpace(tokenInfo.SubscriptionTier) == "" {
+				tokenInfo.SubscriptionTier = account.GetCredential("subscription_tier")
+			}
+			if strings.TrimSpace(tokenInfo.EntitlementStatus) == "" {
+				tokenInfo.EntitlementStatus = account.GetCredential("entitlement_status")
+			}
 			return tokenInfo, nil
 		}
 		refreshErr = err

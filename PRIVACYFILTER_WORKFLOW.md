@@ -5,9 +5,9 @@ that must survive every upstream update.
 
 ## Current downstream release
 
-The current downstream base is upstream `v0.2.10`, released as
-`0.2.10-r76`. The upgrade retains all required downstream customizations in
-this document and the upstream fixes accumulated through `v0.2.10`, including:
+The current downstream base is upstream `v0.2.16`, prepared as
+`0.2.16-r77`. The upgrade retains all required downstream customizations in
+this document and the upstream fixes accumulated through `v0.2.16`, including:
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
 - OpenAI incomplete-stream proxy quarantine (`47ad29db3`);
@@ -59,6 +59,46 @@ Upstream `v0.2.0` added group migrations for reasoning-effort policies and Fast:
 `232_group_force_openai_fast.sql`, and `233_group_free_openai_fast.sql`.
 They are additive and default both Fast switches to disabled, so the upgrade
 does not silently change existing groups or billing.
+
+### r77 upstream v0.2.16 and hosted-search compaction recovery
+
+Branch `custom/v0216-r77` merges upstream `v0.2.11` through `v0.2.16`.
+The five fingerprint implementation and seed-migration files listed under
+r74 remain byte-for-byte identical to the deployed r76 source. The existing
+account seed, mode, proxy binding, header configuration, and account mappings
+must be compared before and after deployment; no reset or seed regeneration
+is part of this upgrade.
+
+Upstream PR #7939 is retained in the normal OAuth transform, HTTP passthrough,
+WebSocket compatibility, and Responses Lite paths. A replayed
+`web_search_call` receives the missing historical tool declaration. Empty-tool
+requests keep `tool_choice=none`; Lite declarations use `additional_tools`
+before a trailing `compaction_trigger`. The original history is not deleted.
+The dedicated `/responses/compact` endpoint and API-key accounts keep their
+existing protocol behavior. This is automatic compatibility behavior, not an
+administrator toggle.
+
+The upstream Forward regression now also covers all four HTTP/Lite
+combinations with the downstream account-balanced fingerprint enabled. It
+asserts that installation, session, thread IDs, seed, and mode remain intact.
+
+The merge preserves game wallets, gifts, separate game pools, rewards, game
+assets/audio, custom home UI, PrivacyFilter, multi-group keys, Grok default
+mappings and concurrency limits, group proxy binding, Forbidden filtering and
+manual bulk deletion, OpenAI-first bound-group fallback, and the downstream
+Grok tool-schema normalization. New Grok image-output normalization runs
+without losing images in the older custom-history adapter. Authoritative Grok
+402 and chat-permission 403 probes still persist the snapshot needed by the
+Forbidden view and disable scheduling.
+
+GPT-6.1 Sol retains all six reasoning choices, including the client-side Ultra
+workflow, and Fast/Priority. The upstream complete model descriptor and its
+500k generation-window default are retained. Existing local CC Switch model
+selection, catalog/order, 600k window, 500k auto-compaction threshold, live
+proxy listeners, and user sessions are not edited by this server upgrade.
+
+Release validation and deployment evidence are recorded in
+`docs/downstream/v0216-r77-validation.md`.
 
 ### r76 GPT-6.1 Sol Ultra option
 
@@ -728,14 +768,14 @@ Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.
 - `privacyfilter-v137`: the original privacyfilter patch extracted from the VPS build.
-- `custom/v028-r74`: current deployable downstream branch.
-- `custom-v0.2.8-r74`: immutable source tag for the current downstream release.
+- `custom/v0216-r77`: current downstream upgrade branch.
+- `custom-v0.2.16-r77`: source tag created after r77 validation.
 
 Update to a new upstream tag:
 
 ```powershell
 git fetch upstream --tags
-git merge --no-ff --no-commit v0.2.8
+git merge --no-ff --no-commit <new-upstream-tag>
 ```
 
 Then verify and push:

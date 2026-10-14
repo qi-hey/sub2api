@@ -224,6 +224,12 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 		const reason = "GROK_QUOTA_PROBE_UPSTREAM_ERROR"
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 		if disableReason := grokPermanentUnschedulableReason(resp.StatusCode, responseBody); account.Schedulable && disableReason != "" {
+			// The downstream Forbidden view needs the authoritative denial snapshot.
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+				grokQuotaSnapshotExtraKey: snapshot,
+			}); err != nil {
+				slog.Warn("grok_disable_snapshot_failed", "account_id", account.ID, "error", err)
+			}
 			disableFailedEvent := "grok_chat_permission_denied_disable_failed"
 			disabledEvent := "grok_chat_permission_denied_disabled"
 			if disableReason == "payment_required" {

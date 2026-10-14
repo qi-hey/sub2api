@@ -13,7 +13,8 @@ func TestGPT61SolKeepsSeparateIdentityAndReasoningLimits(t *testing.T) {
 	require.Equal(t, "gpt-6.1-sol", getNormalizedCodexModel("gpt-6.1-sol"))
 	require.True(t, openai.IsGPT61SolModelSpelling("gpt-6.1-sol"))
 	require.False(t, openai.IsGPT61SolModelSpelling("gpt-6-sol"))
-	require.False(t, openai.IsGPT61SolModelSpelling("gpt-6.1-sol-none"))
+	require.True(t, openai.IsGPT61SolModelSpelling("gpt-6.1-sol-none"))
+	require.Error(t, openai.ValidateGPT61SolReasoningEffort("gpt-6.1-sol", "none"))
 	require.True(t, isOpenAIGPT6Model("gpt-6.1-sol"))
 	require.True(t, configuredCodexSupportsPriorityServiceTier("gpt-6.1-sol"))
 	require.Equal(t, "max", normalizeOpenAIReasoningEffortForModel("max", "gpt-6.1-sol"))
@@ -25,13 +26,13 @@ func TestGPT61SolKeepsSeparateIdentityAndReasoningLimits(t *testing.T) {
 	require.Equal(t, "ultra", levels[5].Effort)
 
 	model := newConfiguredCodexModelDescriptor("gpt-6.1-sol")
-	require.Equal(t, "medium", *model.DefaultReasoningLevel)
+	require.Equal(t, "low", *model.DefaultReasoningLevel)
 	require.Equal(t, "xhigh", *model.MultiAgentReasoningEffort)
 	require.Equal(t, "v2", model.MultiAgentVersion)
-	require.Equal(t, levels, model.SupportedReasoningLevels)
-	require.Equal(t, []configuredCodexServiceTier{{
-		ID: "priority", Name: "Fast", Description: "Priority processing for lower latency.",
-	}}, model.ServiceTiers)
+	require.Equal(t, effortsFromConfiguredCodexLevels(levels), effortsFromConfiguredCodexLevels(model.SupportedReasoningLevels))
+	require.Len(t, model.ServiceTiers, 1)
+	require.Equal(t, "priority", model.ServiceTiers[0].ID)
+	require.Equal(t, int64(500_000), model.ContextWindow)
 	require.Equal(t, int64(configuredCodexGPT56MaxContext), model.MaxContextWindow)
 
 	legacy := newConfiguredCodexModelDescriptor("gpt-6-sol")

@@ -35,7 +35,9 @@ describe('AccountTableFilters Forbidden status', () => {
     })
 
     const selects = wrapper.findAllComponents(SelectStub)
-    const statusSelect = selects[2]
+    const statusSelect = selects.find(select =>
+      select.props('options').some((option: { value: string }) => option.value === 'forbidden')
+    )!
     expect(statusSelect.props('options')).toContainEqual({
       value: 'forbidden',
       label: 'admin.accounts.status.forbidden'

@@ -173,17 +173,22 @@ func NewRedeemService(
 	affiliateService *AffiliateService,
 ) *RedeemService {
 	redeemUserRepo, _ := userRepo.(RedeemUserAdjustmentRepository)
-	return &RedeemService{
+	svc := &RedeemService{
 		redeemRepo:           redeemRepo,
 		userRepo:             userRepo,
 		redeemUserRepo:       redeemUserRepo,
 		subscriptionService:  subscriptionService,
 		cache:                cache,
-		billingCacheService:  billingCacheService,
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
-		affiliateService:     affiliateService,
 	}
+	if billingCacheService != nil {
+		svc.billingCacheService = billingCacheService
+	}
+	if affiliateService != nil {
+		svc.affiliateService = affiliateService
+	}
+	return svc
 }
 
 // GenerateRandomCode 生成随机兑换码

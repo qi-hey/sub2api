@@ -869,7 +869,7 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -908,6 +908,14 @@ func TestAPIContracts(t *testing.T) {
 					"codex_cli_only_blacklist": "",
 					"codex_cli_only_whitelist": "",
 					"compact_home_enabled": false,
+					"game_loyalty_checkin_credits": "0",
+					"game_loyalty_daily_reward_limit": "0",
+					"game_loyalty_enabled": false,
+					"game_loyalty_reward_catalog": "[]",
+					"game_loyalty_slot_bet_credits": "0",
+					"game_wallet_daily_limit": "0",
+					"game_wallet_enabled": false,
+					"game_wallet_exchange_rate": "0",
 					"codex_cli_only_allow_app_server_clients": false,
 					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"allow_ungrouped_key_scheduling": false,
@@ -977,6 +985,9 @@ func TestAPIContracts(t *testing.T) {
 					"payment_balance_recharge_multiplier": 0,
 					"payment_subscription_usd_to_cny_rate": 0,
 					"payment_recharge_fee_rate": 0,
+					"payment_recharge_bonus_tiers": [],
+					"payment_recharge_bonus_mode": "bonus",
+					"payment_recharge_bonus_notice": "",
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
 					"payment_product_name_suffix": "",
@@ -1192,7 +1203,7 @@ func TestAPIContracts(t *testing.T) {
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1241,6 +1252,14 @@ func TestAPIContracts(t *testing.T) {
 					"codex_cli_only_blacklist": "",
 					"codex_cli_only_whitelist": "",
 					"compact_home_enabled": false,
+					"game_loyalty_checkin_credits": "0",
+					"game_loyalty_daily_reward_limit": "0",
+					"game_loyalty_enabled": false,
+					"game_loyalty_reward_catalog": "[]",
+					"game_loyalty_slot_bet_credits": "0",
+					"game_wallet_daily_limit": "0",
+					"game_wallet_enabled": false,
+					"game_wallet_exchange_rate": "0",
 					"codex_cli_only_allow_app_server_clients": false,
 					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"web_search_emulation_enabled": false,
@@ -1297,6 +1316,9 @@ func TestAPIContracts(t *testing.T) {
 					"payment_balance_recharge_multiplier": 0,
 					"payment_subscription_usd_to_cny_rate": 0,
 					"payment_recharge_fee_rate": 0,
+					"payment_recharge_bonus_tiers": [],
+					"payment_recharge_bonus_mode": "bonus",
+					"payment_recharge_bonus_notice": "",
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
 					"payment_product_name_suffix": "",
@@ -1864,8 +1886,8 @@ func (stubApiKeyCache) IncrementCreateAttemptCount(ctx context.Context, userID i
 	return nil
 }
 
-func (stubApiKeyCache) DeleteCreateAttemptCount(ctx context.Context, userID int64) error {
-	return nil
+func (stubApiKeyCache) IncrementCreateCount(ctx context.Context, userID int64, window time.Duration) (int64, error) {
+	return 0, nil
 }
 
 func (stubApiKeyCache) IncrementDailyUsage(ctx context.Context, apiKey string) error {
