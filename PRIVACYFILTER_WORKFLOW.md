@@ -5,7 +5,7 @@ that must survive every upstream update.
 
 ## Current downstream release
 
-The current downstream base is upstream `v0.2.16`, prepared as
+The current downstream base is upstream `v0.2.16`, released as
 `0.2.16-r77`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.2.16`, including:
 
@@ -99,6 +99,16 @@ proxy listeners, and user sessions are not edited by this server upgrade.
 
 Release validation and deployment evidence are recorded in
 `docs/downstream/v0216-r77-validation.md`.
+
+The r77 executable was built locally and deployed on 2026-10-14. Its SHA256 is
+`bdbe2e9b9697641d6ec8c9221402128acf773214df61bbfa99e150b8c414dba9`.
+Production fingerprint, mapping, group-binding and configuration hashes matched
+before and after the cutover. The cutover backup is
+`/opt/sub2api/backups/r77-cutover-20261014T034500Z`; both the complete earlier
+service backup and the fresh cutover database dump have verified local copies.
+The single live GPT-6.1 Sol hosted-search-history canary completed successfully
+without new tool calls and retained its verification marker. Local CC Switch
+state and both proxy process/listener IDs were unchanged.
 
 ### r76 GPT-6.1 Sol Ultra option
 
@@ -769,7 +779,7 @@ Branches:
 - `upstream-clean`: official Sub2API source without local changes.
 - `privacyfilter-v137`: the original privacyfilter patch extracted from the VPS build.
 - `custom/v0216-r77`: current downstream upgrade branch.
-- `custom-v0.2.16-r77`: source tag created after r77 validation.
+- `custom-v0.2.16-r77`: immutable source tag for the validated r77 release.
 
 Update to a new upstream tag:
 

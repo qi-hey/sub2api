@@ -70,5 +70,21 @@ the independent upgrade backup above does not depend on that timer.
 - Both r77 and the restored r76 passed isolated HTTP health/page/game-asset
   checks. The old r76 executable also started successfully on the migrated
   schema, so an immediate binary rollback need not discard new traffic data.
-- Production deployment and the single controlled live canary are recorded
-  here after completion.
+- Production now runs `0.2.16-r77`, with the candidate executable checksum above.
+- Cutover backup: `/opt/sub2api/backups/r77-cutover-20261014T034500Z`.
+  Its fresh database dump also has a verified local copy, SHA256
+  `ac4b87abaa9eaea0a8531d50d8339b14044b45c80a0702d113df06f6773036cc`.
+- Fingerprint, account-routing, account-group, key-group and group-settings
+  hashes matched across the cutover. Application/systemd/Caddy configuration
+  hashes were unchanged.
+- The live canary used `gpt-6.1-sol`, a synthetic historical `web_search_call`,
+  and `tools: []`. One attempt returned HTTP 200, `response.completed`, the
+  expected `R77-7939-OK` marker, and zero new tool calls in approximately 3 seconds.
+- The canary requested `priority`, and gateway usage recorded `priority`; the
+  upstream completion itself reported `service_tier=default`. This proves the
+  history compatibility fix, not that the upstream granted Fast on that attempt.
+  Fast forwarding/policies have separate offline regression coverage.
+- Public HTTPS homepage, local health, and admin SPA routes returned 200.
+- CC Switch database provider records, settings, Codex config and model catalog
+  matched the pre-upgrade snapshot; listeners remained on PIDs 37452/8292 at
+  ports 15721/15722. No session files were rewritten.
