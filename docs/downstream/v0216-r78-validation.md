@@ -46,4 +46,35 @@ provider priorities, CC Switch routes and sessions must remain unchanged.
 - The previous Grok 4.6 model remains accepted server-side for existing
   sessions. Only the local picker entry is replaced.
 
-Deployment and live canary results must be recorded after verification.
+## Deployment Results
+
+- Deployed on 2026-10-17 Asia/Shanghai as `0.2.16-r78`; the running process
+  executable matches the candidate SHA256.
+- Cutover backup: `/opt/sub2api/backups/r78-cutover-20261016T201231Z`.
+  Fresh dump SHA256:
+  `71ce40070ee36d64ceddfa427958fed0ff9b63a58aa8b3dd1002d1bc10436865`.
+- All 1149 non-deleted Grok accounts now have the 4.7 identity; zero old
+  4.5 targets remain, and zero accounts have concurrency above two.
+- Restored-database tests verified mapping idempotence, default insertion,
+  credentials-refresh persistence, and restoration of both mappings and the
+  previous trigger function. Both r78 and restored r77 passed health, homepage,
+  admin SPA, game image and audio checks on isolated ports.
+- One initial diagnostic fixture was rejected by HTTP ingress because its
+  named tool result lacked the required delegation envelope. Error 11377 has
+  no account ID, upstream status or upstream latency; no xAI call occurred.
+  Added a handler-level regression for the corrected real Codex envelope.
+- One upstream canary with nested message content, a delegation envelope and
+  a nested union tool schema returned HTTP 200, `response.completed`, and
+  `R78-GROK47-OK`, with zero new tool calls in 1493 ms. The upstream response
+  model was `grok-4.7-build`.
+- Post-deployment usage records showed 41 GPT-6.1 Sol successes, 16 GPT-6 Astra
+  successes and the Grok 4.7 canary. No post-deployment Grok upstream error
+  was recorded at the final check.
+- Fingerprint identity, group settings and account/key group hashes match
+  the cutover baseline. No persistent GPT configuration was changed.
+- The shared CC Switch model catalog replaces Grok 4.6 at the same position.
+  The then-selected Grok 4.6 live config becomes Grok 4.7 with xhigh; saved GPT
+  provider defaults, all GPT metadata, proxy listeners/processes and the
+  500000/490000 limits are preserved. The database/settings file are unchanged.
+  All 101 session files present in the snapshot remained; one new session
+  appeared independently during work. No session history file was edited.
