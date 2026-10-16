@@ -25,6 +25,9 @@ this document and the upstream fixes accumulated through `v0.2.16`, including:
 - New Grok accounts include the `grok-4.7` identity and target old compatible
   aliases at `grok-4.7`. The explicit deployment script updates existing
   non-deleted Grok accounts and enqueues scheduler cache refresh events.
+  It also replaces the historical `ensure_grok_default_model_mapping`
+  database trigger function, which otherwise forces old 4.5 targets back on
+  every credentials update. Preserve that function during future upgrades.
 - The local CC Switch/Codex shared catalog replaces only `grok-4.6` with
   `grok-4.7`, preserving GPT entries/order, reasoning/Fast capabilities,
   500000 context, 490000 compaction, proxy roles and session files.
@@ -801,8 +804,8 @@ Branches:
 
 - `upstream-clean`: official Sub2API source without local changes.
 - `privacyfilter-v137`: the original privacyfilter patch extracted from the VPS build.
-- `custom/v0216-r77`: current downstream upgrade branch.
-- `custom-v0.2.16-r77`: immutable source tag for the validated r77 release.
+- `custom/v0216-r78`: current downstream compatibility branch.
+- `custom-v0.2.16-r77`: preserved rollback tag for the prior release.
 
 Update to a new upstream tag:
 

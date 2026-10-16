@@ -39,6 +39,10 @@ provider priorities, CC Switch routes and sessions must remain unchanged.
 - Account mapping migration preserves source aliases, redirects only old
   4.5 targets and adds `grok-4.7 -> grok-4.7`. OAuth credentials, status,
   concurrency, groups and priorities are not rewritten.
+- A historical database trigger forced 4.5 targets after credentials updates.
+  The rehearsal exposed this before production. The deployment SQL replaces
+  that function with 4.7 missing-default insertion, while preserving explicit
+  overrides. Rollback restores both the original function and original mappings.
 - The previous Grok 4.6 model remains accepted server-side for existing
   sessions. Only the local picker entry is replaced.
 
