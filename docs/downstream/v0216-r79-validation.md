@@ -25,8 +25,8 @@ GPT HTTP/WS change, fingerprint change or CC Switch edit is included.
 ## Local Verification
 
 - Complete backend `go test -tags=unit ./...`: passed.
-- Complete backend `go vet -tags=unit ./...`: passed before the final
-  malformed-boundary guard; focused tests were rerun after that addition.
+- Complete backend `go vet -tags=unit ./...`: passed. The changed service
+  package's vet and focused tests were rerun after the final boundary guard.
 - New tests cover completed agent history, multiple/interleaved agents,
   CRLF envelopes, idempotence, immutable original requests, JSON/SSE
   forwarding and correct input-error attribution.
@@ -69,3 +69,29 @@ After cutover, permit one synthetic encrypted-history Grok 4.7 canary.
 Require a completed response containing the retained final-answer marker;
 otherwise restore r78. Use normal traffic records to verify GPT rather than
 repeated paid probes. Record the actual results below when available.
+
+## Deployment Results
+
+- Built locally from code commit `7a0019e0a434` with the existing embedded
+  frontend. Candidate and running executable SHA256:
+  `142109113e14c52721b84db6e2880ed8ab7768883bc968ac4aca0149e49fb9a2`.
+- Two isolated database restores matched. Restored configuration hashes
+  matched the backup. Both candidate r79 and restored r78 returned HTTP 200
+  for the homepage, admin accounts SPA, game image and game audio. Temporary
+  databases, services and staging files were cleaned up after verification.
+- Deployed at 2026-10-17 06:35:12 Asia/Shanghai (22:35:12 UTC on October 16).
+  Running service PID: `2820695`.
+- Exactly one live canary used a synthetic Fernet-encrypted intermediate
+  agent message followed by a readable final answer. It returned HTTP 200,
+  `response.completed`, model `grok-4.7-build`, and the expected final-answer
+  marker in 2110 ms, with zero tool calls. No private conversation was sent.
+- Normal traffic after deployment recorded two GPT-6 Astra completions and
+  the Grok 4.7 canary at the final check. No new Grok error was recorded.
+- Fingerprint identities, account mappings/priorities/concurrency, group
+  bindings/settings and production configuration hashes were unchanged.
+- Client-state guard passed after deployment: CC Switch provider/settings
+  state, Codex configuration/catalog, 500000/490000 limits and proxy listener
+  PIDs were unchanged. All 78 pre-existing session files remained present
+  without truncation. No client restart or history-file edit was performed.
+- Local copies of the database dump, service archive and PostgreSQL role
+  backup matched their recorded SHA256 checksums.
