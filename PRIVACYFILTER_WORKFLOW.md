@@ -6,8 +6,28 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.2.16`, released as
-`0.2.16-r78`. The upgrade retains all required downstream customizations in
+`0.2.16-r79`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.2.16`, including:
+
+### r79 Completed agent history when switching to Grok
+
+- A historical `agent_message` can have an opaque OpenAI-encrypted
+  intermediate payload followed by a readable `FINAL_ANSWER` from the same
+  author to the same recipient. Grok egress retains the envelope, every
+  readable part and that final answer, and explicitly marks the unavailable
+  intermediate payload. This does not decrypt or recover the encrypted text.
+- Match only complete Codex envelopes, before a later user turn. A new task,
+  malformed boundary, wrong route, missing/empty/encrypted final answer, or
+  an active encrypted task cannot authorize this fallback. Unmatched opaque
+  messages still produce a clear error, now correctly labelled `param: input`.
+- Original request bytes and stored session histories are untouched. The GPT
+  HTTP/WS paths, native Grok reasoning replay, fingerprints, mappings and all
+  CC Switch configuration remain unchanged.
+- Keep the r78 Grok 4.7 defaults and mapping-trigger fix. No database migration
+  or client-configuration update is required for r79.
+- Regression coverage: `openai_gateway_grok_r79_test.go`. The private failing
+  history can be replayed locally via `SUB2API_GROK_REPLAY_FILE`; never commit
+  its contents. Release validation: `docs/downstream/v0216-r79-validation.md`.
 
 ### r78 Grok history compatibility and Grok 4.7
 

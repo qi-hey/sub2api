@@ -38,6 +38,7 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 	if err := decoder.Decode(&items); err != nil {
 		return nil, fmt.Errorf("parse Grok Responses model input: %w", err)
 	}
+	recoverGrokCompletedAgentHistory(items)
 	callIDs, outputIDs := pairGrokReplayCallIDs(items)
 	filtered := make([]any, 0, len(items))
 	pendingOutputImages := make([]grokToolOutputImage, 0)
@@ -97,7 +98,7 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 				item["text"],
 			))
 			if contentErr != nil {
-				return nil, fmt.Errorf("Grok input[%d]: %w", index, contentErr)
+				return nil, &grokModelInputError{index: index, cause: contentErr}
 			}
 			if !keep {
 				continue
@@ -130,7 +131,7 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 			}
 			content, keep, contentErr := sanitizeGrokMessageContent(item["content"])
 			if contentErr != nil {
-				return nil, fmt.Errorf("Grok input[%d]: %w", index, contentErr)
+				return nil, &grokModelInputError{index: index, cause: contentErr}
 			}
 			if !keep {
 				continue

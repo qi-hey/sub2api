@@ -62,9 +62,14 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	}
 	patchedBody, clientToolMapping, err := patchGrokResponsesBodyWithClientTools(body, upstreamModel)
 	if err != nil {
+		param := "tools"
+		var inputErr *grokModelInputError
+		if errors.As(err, &inputErr) {
+			param = "input"
+		}
 		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
-			"type": "invalid_request_error", "message": err.Error(), "param": "tools",
+			"type": "invalid_request_error", "message": err.Error(), "param": param,
 		}})
 		return nil, err
 	}
