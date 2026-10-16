@@ -6,8 +6,32 @@ that must survive every upstream update.
 ## Current downstream release
 
 The current downstream base is upstream `v0.2.16`, released as
-`0.2.16-r77`. The upgrade retains all required downstream customizations in
+`0.2.16-r78`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.2.16`, including:
+
+### r78 Grok history compatibility and Grok 4.7
+
+- Normalize nested plaintext `encrypted_content` message carriers while
+  preserving task/reply text. Known opaque encrypted message blobs fail with
+  an explicit error instead of silently losing history; native top-level
+  Grok reasoning state retains its existing replay/retry behavior.
+- Preserve delegated input roles, named external inputs, historical custom
+  tool images without declarations, and collision-free generated call IDs.
+- Scope unsupported-field removal to protocol/schema annotations, preserving
+  business property names and literal data. Preserve nested union semantics.
+- Extract xAI flat string errors in Grok-only handlers.
+- New behavior in the shared WS tool adapter is gated to Grok. OpenAI's
+  previous behavior and all fingerprint code remain unchanged.
+- New Grok accounts include the `grok-4.7` identity and target old compatible
+  aliases at `grok-4.7`. The explicit deployment script updates existing
+  non-deleted Grok accounts and enqueues scheduler cache refresh events.
+- The local CC Switch/Codex shared catalog replaces only `grok-4.6` with
+  `grok-4.7`, preserving GPT entries/order, reasoning/Fast capabilities,
+  500000 context, 490000 compaction, proxy roles and session files.
+- Regression coverage: `openai_gateway_grok_r78_test.go`. Release validation:
+  `docs/downstream/v0216-r78-validation.md`.
+
+### Retained upstream and downstream features
 
 - OpenAI OAuth passthrough input normalization (`851436c55`, `3e26dfa5b`);
 - OpenAI incomplete-stream proxy quarantine (`47ad29db3`);
@@ -27,10 +51,9 @@ this document and the upstream fixes accumulated through `v0.2.16`, including:
   `$ref`/`$defs` branches before forwarding. This covers Codex Desktop schemas
   whose root unions reference nested object unions while preserving primitive
   nullable definitions used only by object properties.
-- Referenced object unions nested directly inside another root union are
-  flattened into direct object variants. xAI accepts those variants but rejects
-  a root branch that is itself another `oneOf`/`anyOf`, even when every nested
-  variant is an object.
+- Referenced nested unions use object-root `allOf` wrappers in r78, retaining
+  union semantics without a `oneOf`/`anyOf` directly on a root-union branch.
+  The older flattening changed exclusivity for overlapping variants.
 - OpenAI group-level forced Fast and free-Fast billing policies;
 - model-scoped reasoning-effort mappings with deny-or-downgrade ceilings;
 - Kimi native Responses forwarding and Claude Fable 5.1;

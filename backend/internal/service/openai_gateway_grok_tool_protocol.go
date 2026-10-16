@@ -37,6 +37,11 @@ func adaptResponsesClientToolsForFunctionUpstreamWithMapping(
 		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("decode %s Responses client tools: %w", upstream, err)
 	}
 
+	grokEgress := upstream == "Grok" || upstream == "Grok WS HTTP bridge"
+	prepared := false
+	if grokEgress {
+		prepared = prepareGrokStandaloneToolInputs(requestBody["input"])
+	}
 	mapping, changed, err := apicompat.AdaptResponsesClientToolsWithInheritedMapping(requestBody, inherited, inheritedLoweredTools...)
 	if err != nil {
 		return body, apicompat.ResponsesClientToolMapping{}, err
@@ -44,7 +49,10 @@ func adaptResponsesClientToolsForFunctionUpstreamWithMapping(
 	// Codex can omit tools after they have already appeared earlier in a long
 	// conversation. Lower any remaining custom-tool history for xAI without
 	// adding it to the current turn's reversible client-tool mapping.
-	if lowerGrokResponsesCustomToolHistory(requestBody["input"]) {
+	if grokEgress && preserveGrokCustomToolOutputMedia(requestBody["input"]) {
+		changed = true
+	}
+	if lowerGrokResponsesCustomToolHistory(requestBody["input"]) || prepared {
 		changed = true
 	}
 	if !changed {
@@ -55,6 +63,61 @@ func adaptResponsesClientToolsForFunctionUpstreamWithMapping(
 		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("encode %s Responses client tools: %w", upstream, err)
 	}
 	return rebuilt, mapping, nil
+}
+
+// Keep this preprocessing out of the shared OpenAI WS adapter. Without current
+// tool declarations the legacy history lowering otherwise stringifies images.
+func preserveGrokCustomToolOutputMedia(value any) bool {
+	items, _ := value.([]any)
+	changed := false
+	for _, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok || grokStringValue(item["type"]) != "custom_tool_call_output" {
+			continue
+		}
+		_, structured := item["output"].([]any)
+		if structured || item["content"] != nil || item["images"] != nil {
+			item["type"] = "function_call_output"
+			changed = true
+		}
+	}
+	return changed
+}
+
+func prepareGrokStandaloneToolInputs(value any) bool {
+	items, _ := value.([]any)
+	changed := false
+	for i, raw := range items {
+		item, ok := raw.(map[string]any)
+		if ok && isGrokStandaloneToolInput(item) {
+			items[i] = grokStandaloneToolInputMessage(item)
+			changed = true
+		}
+	}
+	return changed
+}
+
+func isGrokStandaloneToolInput(item map[string]any) bool {
+	return grokStringValue(item["type"]) == "function_call_output" &&
+		firstNonEmptyGrokString(item["call_id"], item["tool_call_id"]) == "" &&
+		strings.TrimSpace(grokStringValue(item["name"])) != ""
+}
+
+func grokStandaloneToolInputMessage(item map[string]any) map[string]any {
+	name := grokStringValue(item["name"])
+	if namespace := strings.TrimSpace(grokStringValue(item["namespace"])); namespace != "" {
+		name = namespace + "." + name
+	}
+	output, images := normalizeGrokToolOutput(firstNonNilGrokJSONValue(item["output"], item["content"]), "")
+	content := []any{map[string]any{
+		"type": "input_text",
+		"text": "[External tool input: " + name + "]\n" + output,
+	}}
+	images = append(images, extractGrokToolOutputImages(item, "")...)
+	for _, image := range images {
+		content = append(content, map[string]any{"type": "input_image", "image_url": image.url})
+	}
+	return map[string]any{"type": "message", "role": "user", "content": content}
 }
 
 func lowerGrokResponsesCustomToolHistory(value any) bool {

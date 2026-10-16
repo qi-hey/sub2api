@@ -616,6 +616,9 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	if resp.StatusCode >= http.StatusBadRequest {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
 		if upstreamMsg == "" {
+			upstreamMsg = sanitizeUpstreamErrorMessage(extractGrokUpstreamErrorMessage(respBody))
+		}
+		if upstreamMsg == "" {
 			upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
 		}
 		kind := "http_error"

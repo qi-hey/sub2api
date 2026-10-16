@@ -234,31 +234,33 @@ describe('CreateAccountModal default group selection', () => {
     await concurrencyInput.setValue('10')
     expect((concurrencyInput.element as HTMLInputElement).value).toBe('2')
     expect(readVisibleModelMappings(wrapper)).toEqual([
-      ['grok-4.5', 'grok-4.5'],
-      ['claude-opus-4-8', 'grok-4.5'],
-      ['gpt-5.2', 'grok-4.5'],
-      ['gpt-5.4', 'grok-4.5'],
-      ['gpt-5.4-mini', 'grok-4.5'],
-      ['gpt-5.5', 'grok-4.5'],
-      ['gpt-5.6-luna', 'grok-4.5'],
-      ['gpt-5.6-sol', 'grok-4.5'],
-      ['gpt-5.6-terra', 'grok-4.5'],
+      ['grok-4.5', 'grok-4.7'],
+      ['grok-4.7', 'grok-4.7'],
+      ['claude-opus-4-8', 'grok-4.7'],
+      ['gpt-5.2', 'grok-4.7'],
+      ['gpt-5.4', 'grok-4.7'],
+      ['gpt-5.4-mini', 'grok-4.7'],
+      ['gpt-5.5', 'grok-4.7'],
+      ['gpt-5.6-luna', 'grok-4.7'],
+      ['gpt-5.6-sol', 'grok-4.7'],
+      ['gpt-5.6-terra', 'grok-4.7'],
     ])
 
     await selectButtonByText(wrapper, 'OpenAI')
-    expect(readVisibleModelMappings(wrapper)).not.toContainEqual(['claude-opus-4-8', 'grok-4.5'])
+    expect(readVisibleModelMappings(wrapper)).not.toContainEqual(['claude-opus-4-8', 'grok-4.7'])
 
     await selectButtonByText(wrapper, 'Grok')
     expect(readVisibleModelMappings(wrapper)).toEqual([
-      ['grok-4.5', 'grok-4.5'],
-      ['claude-opus-4-8', 'grok-4.5'],
-      ['gpt-5.2', 'grok-4.5'],
-      ['gpt-5.4', 'grok-4.5'],
-      ['gpt-5.4-mini', 'grok-4.5'],
-      ['gpt-5.5', 'grok-4.5'],
-      ['gpt-5.6-luna', 'grok-4.5'],
-      ['gpt-5.6-sol', 'grok-4.5'],
-      ['gpt-5.6-terra', 'grok-4.5'],
+      ['grok-4.5', 'grok-4.7'],
+      ['grok-4.7', 'grok-4.7'],
+      ['claude-opus-4-8', 'grok-4.7'],
+      ['gpt-5.2', 'grok-4.7'],
+      ['gpt-5.4', 'grok-4.7'],
+      ['gpt-5.4-mini', 'grok-4.7'],
+      ['gpt-5.5', 'grok-4.7'],
+      ['gpt-5.6-luna', 'grok-4.7'],
+      ['gpt-5.6-sol', 'grok-4.7'],
+      ['gpt-5.6-terra', 'grok-4.7'],
     ])
   })
 
@@ -280,15 +282,16 @@ describe('CreateAccountModal default group selection', () => {
       group_ids: [12],
       credentials: {
         model_mapping: {
-          'grok-4.5': 'grok-4.5',
-          'claude-opus-4-8': 'grok-4.5',
-          'gpt-5.2': 'grok-4.5',
-          'gpt-5.4': 'grok-4.5',
-          'gpt-5.4-mini': 'grok-4.5',
-          'gpt-5.5': 'grok-4.5',
-          'gpt-5.6-luna': 'grok-4.5',
-          'gpt-5.6-sol': 'grok-4.5',
-          'gpt-5.6-terra': 'grok-4.5',
+          'grok-4.5': 'grok-4.7',
+          'grok-4.7': 'grok-4.7',
+          'claude-opus-4-8': 'grok-4.7',
+          'gpt-5.2': 'grok-4.7',
+          'gpt-5.4': 'grok-4.7',
+          'gpt-5.4-mini': 'grok-4.7',
+          'gpt-5.5': 'grok-4.7',
+          'gpt-5.6-luna': 'grok-4.7',
+          'gpt-5.6-sol': 'grok-4.7',
+          'gpt-5.6-terra': 'grok-4.7',
         },
       },
     })

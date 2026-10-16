@@ -4,7 +4,7 @@ import "maps"
 
 import "strings"
 
-const defaultGrokFallbackTargetModel = "grok-4.5"
+const defaultGrokFallbackTargetModel = "grok-4.7"
 
 var openAIToGrokFallbackModels = [...]string{
 	"gpt-5.2",
@@ -22,6 +22,7 @@ func buildDefaultGrokCreateModelMapping() map[string]any {
 	mapping := map[string]any{
 		"claude-opus-4-8": defaultGrokFallbackTargetModel,
 		"grok-4.5":        defaultGrokFallbackTargetModel,
+		"grok-4.7":        defaultGrokFallbackTargetModel,
 	}
 	for _, model := range openAIToGrokFallbackModels {
 		mapping[model] = defaultGrokFallbackTargetModel

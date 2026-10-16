@@ -69,17 +69,19 @@ describe('useModelWhitelist', () => {
     const defaults = getCreateAccountModelRestrictionDefaults('grok')
 
     expect(defaults.modelMappings).toEqual([
-      { from: 'grok-4.5', to: 'grok-4.5' },
-      { from: 'claude-opus-4-8', to: 'grok-4.5' },
-      { from: 'gpt-5.2', to: 'grok-4.5' },
-      { from: 'gpt-5.4', to: 'grok-4.5' },
-      { from: 'gpt-5.4-mini', to: 'grok-4.5' },
-      { from: 'gpt-5.5', to: 'grok-4.5' },
-      { from: 'gpt-5.6-luna', to: 'grok-4.5' },
-      { from: 'gpt-5.6-sol', to: 'grok-4.5' },
-      { from: 'gpt-5.6-terra', to: 'grok-4.5' }
+      { from: 'grok-4.5', to: 'grok-4.7' },
+      { from: 'grok-4.7', to: 'grok-4.7' },
+      { from: 'claude-opus-4-8', to: 'grok-4.7' },
+      { from: 'gpt-5.2', to: 'grok-4.7' },
+      { from: 'gpt-5.4', to: 'grok-4.7' },
+      { from: 'gpt-5.4-mini', to: 'grok-4.7' },
+      { from: 'gpt-5.5', to: 'grok-4.7' },
+      { from: 'gpt-5.6-luna', to: 'grok-4.7' },
+      { from: 'gpt-5.6-sol', to: 'grok-4.7' },
+      { from: 'gpt-5.6-terra', to: 'grok-4.7' }
     ])
     expect(defaults.allowedModels).toContain('grok-4.5')
+    expect(defaults.allowedModels).toContain('grok-4.7')
 
     const config = buildCreateAccountModelRestrictionConfig(
       'grok',
@@ -89,15 +91,16 @@ describe('useModelWhitelist', () => {
     )
     expect(config).toEqual({
       modelMapping: {
-        'grok-4.5': 'grok-4.5',
-        'claude-opus-4-8': 'grok-4.5',
-        'gpt-5.2': 'grok-4.5',
-        'gpt-5.4': 'grok-4.5',
-        'gpt-5.4-mini': 'grok-4.5',
-        'gpt-5.5': 'grok-4.5',
-        'gpt-5.6-luna': 'grok-4.5',
-        'gpt-5.6-sol': 'grok-4.5',
-        'gpt-5.6-terra': 'grok-4.5'
+        'grok-4.5': 'grok-4.7',
+        'grok-4.7': 'grok-4.7',
+        'claude-opus-4-8': 'grok-4.7',
+        'gpt-5.2': 'grok-4.7',
+        'gpt-5.4': 'grok-4.7',
+        'gpt-5.4-mini': 'grok-4.7',
+        'gpt-5.5': 'grok-4.7',
+        'gpt-5.6-luna': 'grok-4.7',
+        'gpt-5.6-sol': 'grok-4.7',
+        'gpt-5.6-terra': 'grok-4.7'
       },
       modelMappingFallbacks: null
     })

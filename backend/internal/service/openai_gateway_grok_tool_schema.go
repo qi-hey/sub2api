@@ -186,32 +186,22 @@ func normalizeGrokObjectSchemaBranches(
 		if !supported {
 			return nil, changed, false
 		}
-		if flattened, ok := flattenGrokNestedObjectUnion(typed); ok {
-			return flattened, true, true
+		// xAI rejects a root union branch that directly declares another
+		// union. Do not flatten across union operators: that changes oneOf
+		// exclusivity. An object branch with an allOf constraint retains the
+		// complete nested predicate without a union at the branch root.
+		_, hasOneOf := typed["oneOf"]
+		_, hasAnyOf := typed["anyOf"]
+		if hasOneOf || hasAnyOf {
+			return []any{map[string]any{
+				"type":  "object",
+				"allOf": []any{typed},
+			}}, true, true
 		}
 		return []any{typed}, changed, true
 	default:
 		return nil, false, false
 	}
-}
-
-func flattenGrokNestedObjectUnion(schema map[string]any) ([]any, bool) {
-	schemaType, ok := schema["type"].(string)
-	if len(schema) != 2 || !ok || strings.TrimSpace(schemaType) != "object" {
-		return nil, false
-	}
-	for _, keyword := range []string{"oneOf", "anyOf"} {
-		raw, exists := schema[keyword]
-		if !exists {
-			continue
-		}
-		branches, ok := raw.([]any)
-		if !ok || len(branches) == 0 {
-			return nil, false
-		}
-		return branches, true
-	}
-	return nil, false
 }
 
 func resolveGrokLocalSchemaRef(document map[string]any, ref string) (map[string]any, bool) {

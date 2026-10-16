@@ -141,14 +141,16 @@ func TestPatchGrokResponsesBodyRepairsAutomationUpdateReferencedRootUnion(t *tes
 	require.Equal(t, "automation_update", mapping.NamespaceTools["mcp__codex_app__automation_update"].Name)
 	require.Equal(t, "mcp__codex_app", mapping.NamespaceTools["mcp__codex_app__automation_update"].Namespace)
 	require.Equal(t, "object", gjson.GetBytes(patched, "tools.0.parameters.type").String())
-	require.Len(t, gjson.GetBytes(patched, "tools.0.parameters.oneOf").Array(), 6)
-	for index := range 6 {
+	require.Len(t, gjson.GetBytes(patched, "tools.0.parameters.oneOf").Array(), 4)
+	for index := range 4 {
 		path := "tools.0.parameters.oneOf." + string(rune('0'+index))
 		require.Equal(t, "object", gjson.GetBytes(patched, path+".type").String())
 		require.False(t, gjson.GetBytes(patched, path+".$ref").Exists())
 		require.False(t, gjson.GetBytes(patched, path+".oneOf").Exists())
 		require.False(t, gjson.GetBytes(patched, path+".anyOf").Exists())
 	}
+	require.Len(t, gjson.GetBytes(patched, "tools.0.parameters.oneOf.1.allOf.0.oneOf").Array(), 2)
+	require.Len(t, gjson.GetBytes(patched, "tools.0.parameters.oneOf.2.allOf.0.oneOf").Array(), 2)
 	require.Equal(t, "null", gjson.GetBytes(patched, "tools.0.parameters.$defs.nullableNotification.anyOf.1.type").String())
 }
 

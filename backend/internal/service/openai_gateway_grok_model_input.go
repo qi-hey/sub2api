@@ -2,8 +2,10 @@ package service
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -50,6 +52,9 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 			continue
 		}
 
+		if isGrokStandaloneToolInput(item) {
+			item = grokStandaloneToolInputMessage(item)
+		}
 		itemType := strings.ToLower(strings.TrimSpace(grokStringValue(item["type"])))
 		role := strings.ToLower(strings.TrimSpace(grokStringValue(item["role"])))
 		if role == "tool" || role == "function" || isGrokReplayOutputType(itemType) {
@@ -82,12 +87,18 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 		case "agent_message":
 			if role == "" {
 				role = "assistant"
+				if item["author"] != nil || item["recipient"] != nil {
+					role = "user"
+				}
 			}
-			content, keep := sanitizeGrokMessageContent(firstNonNilGrokJSONValue(
+			content, keep, contentErr := sanitizeGrokMessageContent(firstNonNilGrokJSONValue(
 				item["content"],
 				item["message"],
 				item["text"],
 			))
+			if contentErr != nil {
+				return nil, fmt.Errorf("Grok input[%d]: %w", index, contentErr)
+			}
 			if !keep {
 				continue
 			}
@@ -117,7 +128,10 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 				role = "user"
 				item["role"] = role
 			}
-			content, keep := sanitizeGrokMessageContent(item["content"])
+			content, keep, contentErr := sanitizeGrokMessageContent(item["content"])
+			if contentErr != nil {
+				return nil, fmt.Errorf("Grok input[%d]: %w", index, contentErr)
+			}
 			if !keep {
 				continue
 			}
@@ -357,10 +371,26 @@ func pairGrokReplayCallIDs(items []any) (map[int]string, map[int]string) {
 	aliases := make(map[string]string)
 	conflictingAliases := make(map[string]struct{})
 	pendingCalls := make([]string, 0)
+	reserved := make(map[string]bool)
+	for _, raw := range items {
+		if item, ok := raw.(map[string]any); ok {
+			for _, field := range []string{"id", "call_id", "tool_call_id"} {
+				if id := strings.TrimSpace(grokStringValue(item[field])); id != "" {
+					reserved[id] = true
+				}
+			}
+		}
+	}
 	nextID := 0
 	synthetic := func() string {
-		nextID++
-		return fmt.Sprintf("grok_replay_call_%d", nextID)
+		for {
+			nextID++
+			id := fmt.Sprintf("grok_replay_call_%d", nextID)
+			if !reserved[id] {
+				reserved[id] = true
+				return id
+			}
+		}
 	}
 	registerAlias := func(alias, canonical string) {
 		alias = strings.TrimSpace(alias)
@@ -476,18 +506,22 @@ func firstNonNilGrokJSONValue(values ...any) any {
 	return nil
 }
 
-func sanitizeGrokMessageContent(content any) (any, bool) {
+func sanitizeGrokMessageContent(content any) (any, bool, error) {
 	switch value := content.(type) {
 	case nil:
-		return nil, false
+		return nil, false, nil
 	case string:
-		return value, strings.TrimSpace(value) != ""
+		return value, strings.TrimSpace(value) != "", nil
 	case []any:
 		filtered := make([]any, 0, len(value))
 		for _, rawPart := range value {
 			part, ok := rawPart.(map[string]any)
 			if !ok {
-				if text, isText := rawPart.(string); !isText || strings.TrimSpace(text) != "" {
+				if text, isText := rawPart.(string); isText {
+					if strings.TrimSpace(text) != "" {
+						filtered = append(filtered, map[string]any{"type": "input_text", "text": text})
+					}
+				} else {
 					filtered = append(filtered, rawPart)
 				}
 				continue
@@ -497,17 +531,56 @@ func sanitizeGrokMessageContent(content any) (any, bool) {
 				if strings.TrimSpace(grokStringValue(part["text"])) == "" {
 					continue
 				}
+				if grokStringValue(part["type"]) == "text" {
+					part = maps.Clone(part)
+					part["type"] = "input_text"
+				}
+			case "encrypted_content":
+				text, ok := part["encrypted_content"].(string)
+				if !ok {
+					return nil, false, fmt.Errorf("encrypted message content must contain readable text")
+				}
+				if strings.TrimSpace(text) == "" {
+					continue
+				}
+				if isGrokOpaqueMessageCiphertext(text) {
+					return nil, false, fmt.Errorf("opaque encrypted message content cannot be replayed to Grok; provide a readable summary or resume with the original model")
+				}
+				// Codex custom-provider agent messages use this carrier for
+				// plaintext task/reply bodies, unlike top-level reasoning state.
+				part = map[string]any{"type": "input_text", "text": text}
 			case "image_url", "input_image":
 				if !grokContentPartHasImageURL(part) {
 					continue
 				}
+				if grokStringValue(part["type"]) == "image_url" {
+					part = maps.Clone(part)
+					part["type"] = "input_image"
+					if image, ok := part["image_url"].(map[string]any); ok {
+						part["image_url"] = image["url"]
+						if detail, exists := image["detail"]; exists {
+							part["detail"] = detail
+						}
+					}
+				}
 			}
 			filtered = append(filtered, part)
 		}
-		return filtered, len(filtered) > 0
+		return filtered, len(filtered) > 0, nil
 	default:
-		return content, true
+		return content, true, nil
 	}
+}
+
+func isGrokOpaqueMessageCiphertext(text string) bool {
+	if !strings.HasPrefix(text, "gAAAA") {
+		return false
+	}
+	decoded, err := base64.URLEncoding.DecodeString(text)
+	if err != nil {
+		decoded, err = base64.RawURLEncoding.DecodeString(text)
+	}
+	return err == nil && len(decoded) >= 73 && decoded[0] == 0x80
 }
 
 func grokContentPartHasImageURL(part map[string]any) bool {

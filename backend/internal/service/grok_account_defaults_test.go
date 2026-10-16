@@ -16,15 +16,16 @@ func TestGrokAccountDefaultsAddMissingModelMappingsWithoutMutatingInput(t *testi
 
 	require.NotContains(t, credentials, "model_mapping")
 	require.Equal(t, map[string]any{
-		"claude-opus-4-8": "grok-4.5",
-		"gpt-5.2":         "grok-4.5",
-		"gpt-5.4":         "grok-4.5",
-		"gpt-5.4-mini":    "grok-4.5",
-		"gpt-5.5":         "grok-4.5",
-		"gpt-5.6-luna":    "grok-4.5",
-		"gpt-5.6-sol":     "grok-4.5",
-		"gpt-5.6-terra":   "grok-4.5",
-		"grok-4.5":        "grok-4.5",
+		"claude-opus-4-8": "grok-4.7",
+		"gpt-5.2":         "grok-4.7",
+		"gpt-5.4":         "grok-4.7",
+		"gpt-5.4-mini":    "grok-4.7",
+		"gpt-5.5":         "grok-4.7",
+		"gpt-5.6-luna":    "grok-4.7",
+		"gpt-5.6-sol":     "grok-4.7",
+		"gpt-5.6-terra":   "grok-4.7",
+		"grok-4.5":        "grok-4.7",
+		"grok-4.7":        "grok-4.7",
 	}, got["model_mapping"])
 	require.True(t, (&Account{Platform: PlatformGrok, Credentials: got}).IsModelSupported("grok-4.5"))
 }
@@ -47,8 +48,8 @@ func TestGrokAccountDefaultsMergeDefaultsWithoutOverwritingExplicitMapping(t *te
 	mapping, ok := got["model_mapping"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "grok-custom", mapping["custom-model"])
-	require.Equal(t, "grok-4.5", mapping["gpt-5.2"])
-	require.Equal(t, "grok-4.5", mapping["gpt-5.6-sol"])
+	require.Equal(t, "grok-4.7", mapping["gpt-5.2"])
+	require.Equal(t, "grok-4.7", mapping["gpt-5.6-sol"])
 }
 
 func TestGrokAccountDefaultsExplicitAliasOverridesDefault(t *testing.T) {
@@ -59,7 +60,7 @@ func TestGrokAccountDefaultsExplicitAliasOverridesDefault(t *testing.T) {
 	mapping, ok := got["model_mapping"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "grok-custom", mapping["gpt-5.2"])
-	require.Equal(t, "grok-4.5", mapping["gpt-5.4"])
+	require.Equal(t, "grok-4.7", mapping["gpt-5.4"])
 }
 
 func TestOpenAIToGrokFallbackModelEligibility(t *testing.T) {
@@ -101,15 +102,16 @@ func TestAdminServiceCreateAccountAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 			require.NotNil(t, created)
 			if tt.wantMapping {
 				require.Equal(t, map[string]any{
-					"claude-opus-4-8": "grok-4.5",
-					"gpt-5.2":         "grok-4.5",
-					"gpt-5.4":         "grok-4.5",
-					"gpt-5.4-mini":    "grok-4.5",
-					"gpt-5.5":         "grok-4.5",
-					"gpt-5.6-luna":    "grok-4.5",
-					"gpt-5.6-sol":     "grok-4.5",
-					"gpt-5.6-terra":   "grok-4.5",
-					"grok-4.5":        "grok-4.5",
+					"claude-opus-4-8": "grok-4.7",
+					"gpt-5.2":         "grok-4.7",
+					"gpt-5.4":         "grok-4.7",
+					"gpt-5.4-mini":    "grok-4.7",
+					"gpt-5.5":         "grok-4.7",
+					"gpt-5.6-luna":    "grok-4.7",
+					"gpt-5.6-sol":     "grok-4.7",
+					"gpt-5.6-terra":   "grok-4.7",
+					"grok-4.5":        "grok-4.7",
+					"grok-4.7":        "grok-4.7",
 				}, created.Credentials["model_mapping"])
 			} else {
 				require.NotContains(t, created.Credentials, "model_mapping")
@@ -243,15 +245,16 @@ func TestAccountServiceCreateAppliesGrokDefaultsOnlyToGrok(t *testing.T) {
 			concurrency:     0,
 			wantConcurrency: 2,
 			wantMapping: map[string]any{
-				"claude-opus-4-8": "grok-4.5",
-				"gpt-5.2":         "grok-4.5",
-				"gpt-5.4":         "grok-4.5",
-				"gpt-5.4-mini":    "grok-4.5",
-				"gpt-5.5":         "grok-4.5",
-				"gpt-5.6-luna":    "grok-4.5",
-				"gpt-5.6-sol":     "grok-4.5",
-				"gpt-5.6-terra":   "grok-4.5",
-				"grok-4.5":        "grok-4.5",
+				"claude-opus-4-8": "grok-4.7",
+				"gpt-5.2":         "grok-4.7",
+				"gpt-5.4":         "grok-4.7",
+				"gpt-5.4-mini":    "grok-4.7",
+				"gpt-5.5":         "grok-4.7",
+				"gpt-5.6-luna":    "grok-4.7",
+				"gpt-5.6-sol":     "grok-4.7",
+				"gpt-5.6-terra":   "grok-4.7",
+				"grok-4.5":        "grok-4.7",
+				"grok-4.7":        "grok-4.7",
 			},
 		},
 		{

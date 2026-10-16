@@ -193,7 +193,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
-		upstreamMsg := sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(respBody))
+		upstreamMsg := sanitizeUpstreamErrorMessage(extractGrokUpstreamErrorMessage(respBody))
 		if upstreamMsg == "" {
 			upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
 		}
@@ -882,10 +882,94 @@ func sanitizeGrokUnsupportedFields(body []byte) ([]byte, error) {
 	if err := decodeOpenAIJSONUseNumber(body, &payload); err != nil {
 		return nil, err
 	}
-	if !deleteJSONFields(payload, grokUnsupportedRecursiveFields) {
+	if !stripGrokProtocolUnsupportedFields(payload) {
 		return body, nil
 	}
 	return marshalOpenAIUpstreamJSON(payload)
+}
+
+func extractGrokUpstreamErrorMessage(body []byte) string {
+	if message := extractUpstreamErrorMessage(body); strings.TrimSpace(message) != "" {
+		return message
+	}
+	if flat := gjson.GetBytes(body, "error"); flat.Type == gjson.String {
+		return flat.String()
+	}
+	return ""
+}
+
+// Remove protocol options without rewriting property names, defaults or tool
+// results that happen to contain the same strings.
+func stripGrokProtocolUnsupportedFields(value any) bool {
+	root, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	changed := false
+	if _, exists := root["external_web_access"]; exists {
+		delete(root, "external_web_access")
+		changed = true
+	}
+	var visitTool func(map[string]any)
+	visitTool = func(tool map[string]any) {
+		if _, exists := tool["external_web_access"]; exists {
+			delete(tool, "external_web_access")
+			changed = true
+		}
+		if schema, ok := tool["parameters"].(map[string]any); ok {
+			changed = stripGrokSchemaUnsupportedAnnotations(schema) || changed
+		}
+		if function, ok := tool["function"].(map[string]any); ok {
+			visitTool(function)
+		}
+		if nested, ok := tool["tools"].([]any); ok {
+			for _, raw := range nested {
+				if child, ok := raw.(map[string]any); ok {
+					visitTool(child)
+				}
+			}
+		}
+	}
+	if tools, ok := root["tools"].([]any); ok {
+		for _, raw := range tools {
+			if tool, ok := raw.(map[string]any); ok {
+				visitTool(tool)
+			}
+		}
+	}
+	return changed
+}
+
+func stripGrokSchemaUnsupportedAnnotations(schema map[string]any) bool {
+	changed := false
+	if _, exists := schema["external_web_access"]; exists {
+		delete(schema, "external_web_access")
+		changed = true
+	}
+	for _, key := range []string{"properties", "patternProperties", "$defs", "definitions", "dependentSchemas"} {
+		if children, ok := schema[key].(map[string]any); ok {
+			for _, raw := range children {
+				if child, ok := raw.(map[string]any); ok {
+					changed = stripGrokSchemaUnsupportedAnnotations(child) || changed
+				}
+			}
+		}
+	}
+	for _, key := range []string{"allOf", "anyOf", "oneOf", "prefixItems"} {
+		if children, ok := schema[key].([]any); ok {
+			for _, raw := range children {
+				if child, ok := raw.(map[string]any); ok {
+					changed = stripGrokSchemaUnsupportedAnnotations(child) || changed
+				}
+			}
+		}
+	}
+	for _, key := range []string{"items", "additionalProperties", "unevaluatedProperties", "contains", "not", "if", "then", "else"} {
+		if child, ok := schema[key].(map[string]any); ok {
+			changed = stripGrokSchemaUnsupportedAnnotations(child) || changed
+		}
+	}
+	return changed
 }
 
 // sanitizeGrokResponsesUnsupportedFields 保留旧函数名作为别名，向后兼容
