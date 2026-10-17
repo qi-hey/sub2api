@@ -286,3 +286,52 @@ func TestR79PrivateHistoryReplay(t *testing.T) {
 	require.Equal(t, opaqueCount, outputStrings[grokCompletedAgentHistoryNotice])
 	t.Logf("readable messages/parts preserved: %d; opaque agent parts marked: %d; original bytes unchanged: true", readableCount, opaqueCount)
 }
+
+func TestR79PrivateFullForwardAndEncryptedReasoningRetry(t *testing.T) {
+	path := os.Getenv("SUB2API_GROK_REPLAY_FILE")
+	if path == "" {
+		t.Skip("private replay not configured")
+	}
+	body, err := os.ReadFile(path)
+	require.NoError(t, err)
+	before := append([]byte(nil), body...)
+	result := `{"id":"resp_recovery","object":"response","status":"completed","model":"grok-4.7","output":[{"id":"msg_recovery","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"REPLAY_OK"}]}],"usage":{"input_tokens":4,"output_tokens":2}}`
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_encrypted_content","message":"Could not decrypt the provided encrypted_content."}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\",\"response\":" + result + "}\n\n"))},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	account := &Account{ID: 79002, Platform: PlatformGrok, Type: AccountTypeAPIKey,
+		Status: StatusActive, Schedulable: true, Concurrency: 2,
+		Credentials: map[string]any{"api_key": "test-placeholder", "base_url": "https://api.x.ai/v1"}}
+	forwarded, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok-4.7", true, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, forwarded)
+	require.Len(t, upstream.bodies, 2, "one bounded reasoning-decode retry")
+	require.True(t, bytes.Equal(before, body), "source history changed")
+	require.Contains(t, recorder.Body.String(), "REPLAY_OK")
+	sourceItems := gjson.GetBytes(body, "input").Array()
+	sentItems := gjson.GetBytes(upstream.bodies[1], "input").Array()
+	var wantContent, gotContent any
+	require.NoError(t, json.Unmarshal([]byte(sourceItems[len(sourceItems)-1].Get("content").Raw), &wantContent))
+	require.NoError(t, json.Unmarshal([]byte(sentItems[len(sentItems)-1].Get("content").Raw), &gotContent))
+	wantJSON, _ := json.Marshal(wantContent)
+	gotJSON, _ := json.Marshal(gotContent)
+	require.True(t, bytes.Equal(wantJSON, gotJSON), "latest user message or image changed")
+	for _, sent := range upstream.bodies {
+		agentAnswers := 0
+		for _, item := range gjson.GetBytes(sent, "input").Array() {
+			if strings.Contains(item.Get("content").Raw, "Message Type: FINAL_ANSWER") {
+				agentAnswers++
+			}
+		}
+		require.Positive(t, agentAnswers, "readable final answer missing")
+		require.Contains(t, string(sent), grokCompletedAgentHistoryNotice)
+	}
+	t.Logf("private full forward completed; one encrypted-reasoning retry; latest text/image and final agent answer retained")
+}
