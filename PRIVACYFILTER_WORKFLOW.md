@@ -9,12 +9,13 @@ The current downstream base is upstream `v0.2.16`, released as
 `0.2.16-r79`. The upgrade retains all required downstream customizations in
 this document and the upstream fixes accumulated through `v0.2.16`, including:
 
-Production status after the October 17 DNS incident: the VPS is currently
-running `0.2.16-r78`. Public DNS has been repaired and persisted. The r79
-source and executable are retained, but the additional old-history canary
-did not satisfy its text-marker check and was rolled back. Do not mistake
-the earlier r79 successful deployment record for the current production
-state. See `docs/downstream/v0216-r79-dns-recovery.md`.
+Production status after the October 17 DNS incident: the VPS is running
+`0.2.16-r79` again following the user-authorized additional canary at 19:43
+Asia/Shanghai. The local proxy route returned the expected history marker
+with a completed Grok 4.7 stream; normal GPT traffic also succeeded.
+Public DNS is repaired and persisted independently of application rollback.
+Preserve the DNS deployment settings and the verification evidence in
+`docs/downstream/v0216-r79-dns-recovery.md`.
 
 ### r79 Completed agent history when switching to Grok
 

@@ -2,10 +2,11 @@
 
 ## Current Status
 
-Production remains `0.2.16-r78`, executable SHA256
-`afcde86c48b42026fa3f2aeebdd436e33f132c324d1193a5768eb62a2ae8c78a`.
-The DNS repair is active. Do not redeploy r79 using only its earlier
-acceptance report: the later canary's semantic result remains unresolved.
+Production is `0.2.16-r79`, executable SHA256
+`142109113e14c52721b84db6e2880ed8ab7768883bc968ac4aca0149e49fb9a2`.
+The DNS repair is active. Following the user's explicit approval, the
+additional local-route canary passed at 19:43 Asia/Shanghai. Earlier failed
+verification and rollbacks are retained below rather than overwritten.
 
 ## DNS Incident
 
@@ -89,13 +90,40 @@ passed old-history test. The guard restored r78 and kept the DNS fix.
 Prepared `grok_canary_events.py` now captures visible synthetic output from
 delta, text-done, item-done and terminal events, plus event types and usage.
 It excludes encrypted reasoning. Seven offline parser regressions passed.
-This improved verifier has NOT been run against a second live request.
-The existing one-shot marker remains in place; another probe requires the
-user's explicit exception to project AGENTS.md rule 7.
+The original one-shot marker was kept intact. A second probe was not sent
+until the user explicitly answered the request for an additional test.
 
 Seven normal GPT-6 Astra requests succeeded after the final rollback at the
 last check. No new DNS error was observed. One earlier 429 was an account
 usage-limit response recovered with HTTP 200, separate from this incident.
+
+## Authorized Additional Test
+
+The user replied "test" after the explicit request for one additional
+controlled request. The additional run has a separate one-shot marker and
+report, preserving the first result.
+
+- Candidate r79 was restored at 19:43:35 Asia/Shanghai, process PID 95197.
+- Request traversed the unchanged local port 15722, CC Switch and VPS.
+- Model Grok 4.7, xhigh, HTTP 200, text/event-stream.
+- Response model grok-4.7-build, status completed; zero tool calls.
+- Visible response was exactly `R79-GROK47-OK`; duration 2671 ms.
+- Output included both reasoning and message items. The verifier observed
+  eight text delta events, text-done, item-done and response.completed.
+- Report: `backups/r79-recovery-20261017/canary-result-approved-extra.json`
+  in the local project. No private user history was sent.
+- After deployment, one normal GPT-6 Astra usage record and the Grok canary
+  were present, with no new ops error at the final check.
+- CC Switch remained healthy with zero consecutive failures. Provider
+  configuration, selected model/effort/tier, model catalog, proxy PIDs and
+  all 80 existing session files passed the unchanged-state check.
+- The service remains on r79 after this successful test.
+
+The first semantic mismatch cannot be retrospectively attributed to either
+the parser or the model, because its actual answer was not retained. The
+additional test demonstrates successful current behavior, not an explanation
+of the missing earlier text. Opaque-only history without a readable completed
+agent result remains outside the r79 recovery contract.
 
 ## Backup and Protected State
 
